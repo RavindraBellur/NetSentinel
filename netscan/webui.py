@@ -438,7 +438,7 @@ function group(t){
 }
 function devRow(x){
   var ports=(x.ports||[]).slice(0,5).map(function(p){
-    return '<span class="port" title="'+esc(p.service)+'">'+p.port+'</span>'; }).join('')+
+    return '<span class="port" title="'+esc(p.service)+'">'+p.port+(p.proto==='udp'?'/u':'')+'</span>'; }).join('')+
     ((x.ports||[]).length>5?'<span class="port">+'+(x.ports.length-5)+'</span>':'');
   var name=x.label||x.hostname||x.snmp_name||'';
   return '<tr onclick="openDev(\''+esc(x.ip)+'\')" style="cursor:pointer">'+
@@ -511,7 +511,7 @@ function viewExposure(){
     return '<tr onclick="this.nextElementSibling.style.display=(this.nextElementSibling.style.display===\'none\'?\'table-row\':\'none\')" style="cursor:pointer">'+
       '<td><span class="badge sev-'+esc(f.risk)+'">'+esc(f.risk)+'</span></td>'+
       '<td>'+esc(f.device||'')+' <span class="muted small">'+esc(f.ip||'')+'</span></td>'+
-      '<td class="mono">'+esc(f.port)+'</td>'+
+      '<td class="mono">'+esc(f.port)+(f.proto==='udp'?'/udp':'')+'</td>'+
       '<td>'+esc(f.service)+'</td>'+
       '<td class="small">'+esc((f.why||'').slice(0,90))+'</td></tr>'+
       '<tr style="display:none"><td></td><td colspan="4" class="small" style="padding:8px 6px">'+
@@ -1711,7 +1711,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.27.0"))
+            .replace("__VERSION__", "1.28.0"))
 
 
 def app_page(version):
@@ -2572,7 +2572,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.27.0", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.28.0", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

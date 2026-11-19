@@ -1,4 +1,4 @@
-# NetSentinel 1.27
+# NetSentinel 1.28
 
 
 A network operations console for a small or mid-size office that runs on one PC, on
@@ -20,7 +20,20 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 
 ---
 
-## What's new in 1.27 — Windows sign-in, Update now, known limits
+## What's new in 1.28 — UDP services found, and a fuller port catalogue
+
+| Change | What it does |
+|---|---|
+| **UDP services are now probed** | Every device is asked, with a real request, whether it runs **NTP (123)**, **NetBIOS (137)**, **SNMP (161)**, **UPnP (1900)** and **mDNS (5353)**. A port counts as open only when the service answers — silence never does. UPnP on a camera or recorder is graded **high**, and its SERVER header (often the vendor and model) is shown and used to identify the device. |
+| **Switches and APs identified over SNMP again** | SNMP and NetBIOS are UDP, so they were never in the TCP scan — and the identification step waited for them there. Result: only the gateway was ever identified over SNMP, and Windows names over NetBIOS never were. Both now work for every device. |
+| **Your SNMP communities are used** | The community names in Settings → Discovery are tried first (they were ignored), all at once — about 1 s per device instead of 5.6 s. |
+| **Mail ports scanned** | SMTP 25, submission 587, IMAPS 993, POP3S 995 are now in the TCP scan. |
+| **Port catalogue: 49 services** | From the "Prahari" copy's 1.28: RTSP 554 (high — cameras often stream without a password), IPP 631, recorder web ports 8000/8081/8888/9000, and the services above, each with why it matters, how to close it and when it is legitimate. |
+
+Not probed: NetBIOS datagram (138) does not answer requests, so it cannot be detected from outside;
+SNMPv3-only devices answer only with SNMPv3 credentials (Settings → SNMPv3).
+
+## What was new in 1.27 — Windows sign-in, Update now, known limits
 
 | Change | What it does |
 |---|---|

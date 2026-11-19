@@ -183,6 +183,58 @@ CATALOGUE = {
          "/ip service disable winbox (use Winbox over MAC or SSH instead), and firewall 8291 "
          "to admin IPs.",
          "Only from an admin subnet."),
+    554: ("RTSP", HIGH,
+          "Video streaming. Many cameras and recorders accept an unauthenticated stream, so "
+          "anyone on the network can watch.",
+          "Require authentication on the stream (most cameras have 'anonymous RTSP' in their "
+          "settings), and keep cameras on a separate VLAN from guest Wi-Fi.",
+          "Yes, with authentication, inside a CCTV VLAN."),
+    631: ("IPP printing", LOW,
+          "Network printing with an admin surface that has had path-traversal bugs.",
+          "Restrict to the POS/KOT subnet, and keep the printer firmware updated.",
+          "Yes, inside a trusted VLAN."),
+    137: ("NetBIOS name", MEDIUM,
+          "Legacy Windows name service: leaks host names and workgroup structure.",
+          "Adapter -> IPv4 -> Advanced -> WINS -> disable NetBIOS over TCP/IP.",
+          "Rarely."),
+    138: ("NetBIOS datagram", MEDIUM, "Legacy Windows browsing.",
+          "Same as 137: disable NetBIOS over TCP/IP, then block 137-139.",
+          "Rarely."),
+    123: ("NTP", INFO,
+          "Time sync. An open NTP server can be used in amplification attacks.",
+          "Restrict to the LAN, or point devices at the router's NTP service only.",
+          "Yes, on the router or domain controller."),
+    587: ("SMTP submission", LOW, "Authenticated mail submission.",
+          "Restrict to the mail server; devices that send mail should use it with credentials.",
+          "Only on the mail server."),
+    993: ("IMAPS", INFO, "Encrypted mail access.", "Keep it; restrict to the mail server.",
+          "Yes, on the mail server."),
+    995: ("POP3S", INFO, "Encrypted mail access.", "Keep it; restrict to the mail server.",
+          "Yes, on the mail server."),
+    8000: ("HTTP alt (DVR)", LOW,
+          "Very common second web port on recorders and cameras - often the same admin page "
+          "with no encryption.",
+          "Enable HTTPS on the device and disable the extra listener, or keep it on a CCTV "
+          "VLAN that staff and guests cannot reach.",
+          "Only inside a CCTV VLAN."),
+    8081: ("HTTP alt", LOW, "A second web listener, often a camera or app server.",
+          "Identify it, enable HTTPS, or move it to a management VLAN.",
+          "Sometimes - treat it like port 80."),
+    8888: ("HTTP alt", LOW, "A third web listener; on DVRs this is frequently the admin UI.",
+          "Identify it, enable HTTPS, restrict to a management VLAN.",
+          "Sometimes."),
+    9000: ("HTTP alt / SonarQube", LOW, "Web UI or a dev tool that should not be exposed.",
+          "Identify it and either firewall it or move it off the flat network.",
+          "Only if deliberately used."),
+    1900: ("UPnP", HIGH,
+          "UPnP lets any device on the LAN open ports on the router by itself - the classic way "
+          "a camera ends up reachable from the internet.",
+          "Router -> disable UPnP (NAT-PMP/UPnP) entirely. On cameras and NVRs turn off "
+          "'P2P'/'cloud' access.",
+          "Never on a business network."),
+    5353: ("mDNS", INFO, "Local discovery (Bonjour/AirPlay).",
+           "Harmless on the LAN; do not route it to the guest network unless you want AirPlay "
+           "to work across it.", "Yes, on the LAN."),
     8728: ("MikroTik API", MEDIUM, "Scriptable full admin access.",
          "/ip service disable api; use api-ssl (8729) with certificates if you need it.",
          "Only from the management host."),
@@ -213,11 +265,16 @@ def exposure(devices):
     """Every open port on every device, with its hardening advice."""
     findings = []
     for dev in devices or []:
-        ports = sorted({p.get("port") for p in (dev.get("ports") or []) if p.get("port")})
-        for port in ports:
+        protos = {}
+        for p in dev.get("ports") or []:
+            if p.get("port"):
+                protos[p["port"]] = p.get("proto") or "tcp"
+        for port in sorted(protos):
             info = describe(port, dev.get("type") or "")
+            if port == 1900 and dev.get("upnp_server"):
+                info["why"] += f" This device announces itself as: {dev['upnp_server']}."
             findings.append(dict(info, device=dev.get("label") or dev.get("hostname")
-                                 or dev.get("ip"), ip=dev.get("ip"),
+                                 or dev.get("ip"), ip=dev.get("ip"), proto=protos[port],
                                  type=dev.get("type") or ""))
     order = {HIGH: 0, MEDIUM: 1, LOW: 2, INFO: 3}
     findings.sort(key=lambda f: (order.get(f["risk"], 9), f["device"] or "", f["port"]))

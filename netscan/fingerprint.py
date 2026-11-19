@@ -245,6 +245,7 @@ def classify(info: dict) -> dict:
     haystack_parts.append(info.get("snmp_descr") or "")
     haystack_parts.append(info.get("snmp_name") or "")
     haystack_parts.append(info.get("hostname") or "")
+    haystack_parts.append(info.get("upnp_server") or "")   # UPnP SERVER header names the vendor/model
     haystack = " ".join(haystack_parts).lower()
 
     for keyword, rules in KEYWORD_RULES:

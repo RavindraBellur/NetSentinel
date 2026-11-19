@@ -674,8 +674,10 @@ class Scanner:
                     "hostname": info.get("hostname", ""),
                     "type": verdict["type"], "type_label": verdict["label"],
                     "confidence": verdict["confidence"], "evidence": verdict["evidence"],
-                    "ports": [{"port": p, "service": discovery.PORT_SERVICES.get(p, "")}
+                    "ports": [{"port": p, "service": discovery.PORT_SERVICES.get(p, ""),
+                               "proto": "udp" if p in (info.get("udp_ports") or []) else "tcp"}
                               for p in info.get("ports", [])],
+                    "upnp_server": info.get("upnp_server", ""),
                     "title": next((h.get("title") for h in info.get("http", []) if h.get("title")), ""),
                     "server": next((h.get("server") for h in info.get("http", []) if h.get("server")), ""),
                     "snmp_descr": info.get("snmp_descr", ""),

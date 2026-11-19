@@ -22,6 +22,7 @@ exe is made; one failure stops the release. Run it yourself: `python -m unittest
 | Factory-password check | fake web servers and cameras on the build machine |
 | Backup restore | a live database with unsaved write-ahead-log data |
 | SNMPv3 key derivation | the RFC 3414 published test vectors |
+| UDP service probes (NTP, NetBIOS, SNMP, UPnP, mDNS) | fake services on the build machine; mDNS also seen on a real office LAN |
 | SLA PDF | generated and checked |
 
 ## 2. What has never run on real equipment
