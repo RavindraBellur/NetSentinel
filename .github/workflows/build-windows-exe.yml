@@ -30,6 +30,7 @@ jobs:
           pip install pyinstaller
 
       - name: Build the single-file exe
+        shell: cmd
         run: |
           python sbom.py
           pyinstaller --onefile --name NetSentinel ^
