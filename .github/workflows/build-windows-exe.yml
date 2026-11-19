@@ -45,9 +45,11 @@ jobs:
         run: |
           $p = "Ns-" + [guid]::NewGuid().ToString("N").Substring(0,16) + "!a1"
           Write-Output "::add-mask::$p"
-          net user nsadmintest $p /add | Out-Null
-          net localgroup Administrators nsadmintest /add | Out-Null
-          net user nsusertest $p /add | Out-Null
+          $sec = ConvertTo-SecureString $p -AsPlainText -Force
+          New-LocalUser -Name nsadmintest -Password $sec -PasswordNeverExpires | Out-Null
+          Add-LocalGroupMember -Group (Get-LocalGroup -SID "S-1-5-32-544").Name -Member nsadmintest
+          New-LocalUser -Name nsusertest -Password $sec -PasswordNeverExpires | Out-Null
+          Add-LocalGroupMember -Group (Get-LocalGroup -SID "S-1-5-32-545").Name -Member nsusertest
           "NS_TEST_WIN_ADMIN=nsadmintest" | Out-File -Append $env:GITHUB_ENV
           "NS_TEST_WIN_USER=nsusertest" | Out-File -Append $env:GITHUB_ENV
           "NS_TEST_WIN_PASS=$p" | Out-File -Append $env:GITHUB_ENV
