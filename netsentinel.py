@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from netscan import __version__, apitokens, auth, netinfo, oui, settings, sites, store  # noqa: E402
 from netscan import certs as certs_mod, fleet as fleet_mod, tailnet, tlsutil  # noqa: E402
 from netscan import scanner as scanner_mod, webui  # noqa: E402
+from netscan import agent as agent_mod, updater as updater_mod  # noqa: E402
 from netscan.report import text_report  # noqa: E402
 
 
@@ -159,7 +160,32 @@ def main(argv=None):
                         help="agent: accept a self-signed console certificate")
     parser.add_argument("--refresh-oui", action="store_true", help="download the IEEE vendor registry and exit")
     parser.add_argument("--report", metavar="FILE", help="write the text report to FILE")
+    parser.add_argument("--check-update", action="store_true",
+                        help="check GitHub for a newer NetSentinel and exit")
+    parser.add_argument("--update-now", action="store_true",
+                        help="download and install the newest NetSentinel, then exit (start it again after)")
+    parser.add_argument("--selftest-update", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+
+    if args.selftest_update:
+        return updater_mod.selftest()
+
+    if args.check_update or args.update_now:
+        upd = updater_mod.Updater(lambda: settings.get("update"), log=lambda m: print("  " + m))
+        restart = upd.check_once(install=bool(args.update_now))
+        snap = upd.snapshot()
+        print(f"  this copy   : {snap['version']} ({snap['mode']} install)")
+        print(f"  newest      : {snap['latest'] or 'unknown'}")
+        if snap["error"]:
+            print(f"  problem     : {snap['error']}")
+        elif restart:
+            print(f"  installed {snap['latest']} - start NetSentinel again to run it")
+        elif snap["status"] == "available":
+            print("  an update is available: run with --update-now"
+                  if snap["can_install"] else f"  download it from {snap['notes_url']}")
+        else:
+            print("  up to date")
+        return 1 if snap["status"] == "error" else 0
 
     if args.set_password:
         if store.user_count():
@@ -433,6 +459,11 @@ def main(argv=None):
         print(("  vendor registry updated: " if ok else "  could not update registry: ") + msg)
         return 0 if ok else 1
 
+    if not args.scan and updater_mod.boot_check(log=lambda m: print("  " + m)):
+        # the update failed to start several times and the previous version is back: run that one
+        updater_mod.spawn(updater_mod.relaunch_cmd())
+        return 1
+
     banner()
 
     sc = scanner_mod.Scanner(
@@ -557,6 +588,17 @@ def main(argv=None):
     if args.rescan_every > 0:
         print(f"  auto rescan : every {args.rescan_every}s")
         start_auto_rescan(sc, args.rescan_every)
+    upd = updater_mod.Updater(lambda: settings.get("update"), log=lambda m: print("  " + m),
+                              on_restart=httpd.shutdown)
+    sc.updater = upd
+    upd.start()
+    _u = settings.get("update") or {}
+    if upd.mode == "notify":
+        print("  updates     : checked every 6 hours (this copy can't install them itself)")
+    elif not _u.get("check", True):
+        print("  updates     : off")
+    else:
+        print(f"  updates     : checked every 6 hours, {'installed automatically' if upd.auto_install else 'installed when you choose'}")
     print("  leave this window open. Press Ctrl+C to stop.\n")
     try:
         httpd.serve_forever()
@@ -568,6 +610,9 @@ def main(argv=None):
             httpd.server_close()
         except Exception:
             pass
+    if upd.restart_requested:
+        print(f"  updated to {upd.latest} - starting the new version ...")
+        return upd.handoff()
     return 0
 
 

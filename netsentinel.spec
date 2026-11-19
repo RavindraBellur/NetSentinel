@@ -16,7 +16,7 @@ HIDDEN = [
     "netscan.poll", "netscan.remote", "netscan.report", "netscan.scanner",
     "netscan.settings", "netscan.sites", "netscan.snmp", "netscan.store",
     "netscan.syslogrx", "netscan.tailnet", "netscan.tlsutil", "netscan.totp",
-    "netscan.wan", "netscan.webui",
+    "netscan.updater", "netscan.wan", "netscan.webui",
     # optional extras: harmless when missing, bundled when present
     "psutil", "scapy", "cryptography", "sqlite3", "ssl", "email.mime.text",
 ]

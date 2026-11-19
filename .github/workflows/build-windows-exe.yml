@@ -1,17 +1,20 @@
 # Builds NetSentinel.exe on a real Windows machine in the cloud - free for public repos.
 #
-# How to use it (no Windows PC needed):
-#   1. Create a free account at github.com and a new repository.
-#   2. Upload this folder (drag the files into the browser page, or use GitHub Desktop).
-#   3. Go to the "Actions" tab, pick "Build Windows EXE", press "Run workflow".
-#   4. When it finishes, download "NetSentinel-windows" from the run page - it contains
-#      NetSentinel.exe (single file, Python bundled, nothing to install).
+#   Run workflow (Actions tab)  -> builds the exe; download "NetSentinel-windows" from the run page.
+#   Push a tag  vX.Y.Z          -> also creates a DRAFT GitHub release with NetSentinel.exe and
+#                                  NetSentinel-app.zip. Installed copies never see a draft.
+#                                  On the publisher's Mac run:  python3 tools/sign_release.py vX.Y.Z
+#                                  which signs latest.json and publishes the release; from then on
+#                                  every NetSentinel picks the update up within 6 hours.
 name: Build Windows EXE
 
 on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+
+permissions:
+  contents: write
 
 jobs:
   windows:
@@ -23,6 +26,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Tag must match the version in the code
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $code = python -c "import netscan; print(netscan.__version__)"
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          if ($code -ne $tag) { Write-Error "tag v$tag but netscan/__init__.py says $code"; exit 1 }
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -33,42 +44,35 @@ jobs:
         shell: cmd
         run: |
           python sbom.py
-          pyinstaller --onefile --name NetSentinel ^
-            --icon netsentinel.ico ^
-            --add-data "netscan;netscan" ^
-            --hidden-import netscan.webui ^
-            --hidden-import netscan.report ^
-            --hidden-import netscan.remote ^
-            --hidden-import netscan.poll ^
-            --hidden-import netscan.netflow ^
-            --hidden-import netscan.syslogrx ^
-            --hidden-import netscan.alerts ^
-            --hidden-import netscan.auth ^
-            --hidden-import netscan.diagnose ^
-            --hidden-import netscan.settings ^
-            --hidden-import netscan.wan ^
-            --hidden-import netscan.sites ^
-            --hidden-import netscan.agent ^
-            --hidden-import netscan.oidc ^
-            --hidden-import netscan.tlsutil ^
-            --hidden-import netscan.apitokens ^
-            --hidden-import netscan.netguard ^
-            --hidden-import netscan.totp ^
-            --hidden-import netscan.certs ^
-            --hidden-import netscan.heartbeat ^
-            --hidden-import netscan.fleet ^
-            --hidden-import netscan.tailnet ^
-            netsentinel.py
+          pyinstaller --noconfirm netsentinel.spec
 
       - name: Smoke test the exe
+        shell: cmd
         run: |
-          .\dist\NetSentinel.exe --help
+          dist\NetSentinel.exe --help
+          dist\NetSentinel.exe --selftest-update
+
+      - name: Package the app code for source installs
+        shell: pwsh
+        run: |
+          python -c "import os, zipfile; top=['netscan','netsentinel.py','requirements.txt','README.md','EULA.txt','sbom.json']; z=zipfile.ZipFile('dist/NetSentinel-app.zip','w',zipfile.ZIP_DEFLATED); [z.write(os.path.join(r,f), os.path.join(r,f).replace(os.sep,'/')) for t in top for r,d,fs in (os.walk(t) if os.path.isdir(t) else [('',[],[t])]) for f in fs if '__pycache__' not in r and not f.endswith('.pyc')]; z.close()"
+          python -c "import zipfile; print(len(zipfile.ZipFile('dist/NetSentinel-app.zip').namelist()), 'files in NetSentinel-app.zip')"
 
       - uses: actions/upload-artifact@v4
         with:
           name: NetSentinel-windows
           path: |
             dist/NetSentinel.exe
+            dist/NetSentinel-app.zip
             README.md
             EULA.txt
             sbom.json
+
+      - name: Draft the GitHub release (signed and published later from the Mac)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/NetSentinel.exe dist/NetSentinel-app.zip `
+            --draft --title "NetSentinel ${{ github.ref_name }}" --generate-notes

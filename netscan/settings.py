@@ -94,6 +94,7 @@ DEFAULTS = {
              "role_claim": "groups", "role_map": {}, "default_role": "viewer",
              "allowed_domains": [], "button_label": "Sign in with your company account"},
     "remote": {"enabled": True, "from_other_devices": False},
+    "update": {"check": True, "auto_install": True},
 }
 
 _lock = threading.RLock()

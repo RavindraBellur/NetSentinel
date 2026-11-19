@@ -238,6 +238,10 @@ function head(){
   document.getElementById('h-right').innerHTML=
     '<span class="pill">'+stDot(h.down?'down':(h.degraded?'degraded':'up'))+'health '+h.score+'%</span>'+
     '<span class="pill">'+sev+'</span>'+
+    (d.update&&['available','updating','restarting'].indexOf(d.update.status)>=0&&can('settings')?
+      '<a class="pill" href="#settings" title="Settings → Updates">'+
+      (d.update.status==='available'?'update '+esc(d.update.latest)+' available':'updating to '+esc(d.update.latest)+' ...')+
+      '</a>':'')+
     (can('scan')?'<button class="sm" onclick="rescan()">Rescan</button>':'')+
     (d.auth&&d.auth.enabled&&d.auth.user?
       '<span class="pill" title="signed in">'+esc(d.auth.user)+
@@ -812,6 +816,7 @@ function viewSettings(){
      '<div class="small muted">Incidents also go to the generic webhook above. Use the button '+
      'below to prove every channel works.</div>'+
    '</div>'+
+   updateCard(s.update||{})+
    '<div class="card" style="margin-top:14px"><h2>Heartbeat (dead-man\'s switch)</h2>'+
      chk('Ping an outside service so you are told when this whole site goes dark','hben',
          (s.heartbeat||{}).enabled)+
@@ -868,6 +873,38 @@ function num(id,dflt){ var v=document.getElementById(id); if(!v) return dflt;
   var n=parseFloat(v.value); return isNaN(n)?dflt:n; }
 function chkVal(id){ var v=document.getElementById(id); return v?v.checked:false; }
 function strVal(id){ var v=document.getElementById(id); return v?v.value:''; }
+function updateCard(cfg){
+  var u=S.data.update||{}, when=u.last_check?new Date(u.last_check*1000).toLocaleString():'not yet';
+  var state={idle:'waiting for the first check',checking:'checking ...',up_to_date:'up to date',
+    available:'version '+esc(u.latest)+' is available',updating:'downloading and installing '+esc(u.latest)+' ...',
+    restarting:'restarting into '+esc(u.latest)+' ...',error:'last check failed'}[u.status]||esc(u.status||'');
+  var how={exe:'NetSentinel.exe replaces itself and restarts',
+    source:'the app files are replaced (with a backup) and it restarts',
+    notify:'this copy (.pyz / Mac app) only tells you - download the new version yourself'}[u.mode]||'';
+  return '<div class="card" style="margin-top:14px"><h2>Updates</h2>'+
+    '<div class="small" style="margin-bottom:8px">This copy: <b>'+esc(u.version||'?')+'</b> &middot; '+
+      'newest: <b>'+esc(u.latest||'?')+'</b> &middot; '+state+
+      (u.notes_url&&u.latest?' &middot; <a href="'+esc(u.notes_url)+'" target="_blank" rel="noopener">what changed</a>':'')+'</div>'+
+    (u.error?'<div class="small" style="color:var(--bad,#c33);margin-bottom:8px">'+esc(u.error)+'</div>':'')+
+    '<div class="field"><span class="sw"><input type="checkbox" id="upchk" '+(cfg.check!==false?'checked':'')+
+      '> Check GitHub for new versions every 6 hours</span></div>'+
+    (u.can_install===false?'':'<div class="field"><span class="sw"><input type="checkbox" id="upauto" '+
+      (cfg.auto_install!==false?'checked':'')+'> Install them automatically</span></div>')+
+    '<div class="small muted" style="margin-bottom:10px">Last check: '+esc(when)+'. '+esc(how)+
+      '. Only releases signed with the NetSentinel key are installed; if a new version does not start, '+
+      'the previous one is put back.</div>'+
+    '<div style="display:flex;gap:8px;align-items:center">'+
+      '<button class="sm" onclick="updateAction(\'check\')">Check now</button>'+
+      (u.status==='available'&&u.can_install?'<button class="sm primary" onclick="updateAction(\'install\')">Install '+
+        esc(u.latest)+' now</button>':'')+
+      '<span id="upmsg" class="small muted"></span></div></div>';
+}
+function updateAction(kind){
+  var el=document.getElementById('upmsg'); el.textContent=kind==='install'?'starting ...':'checking ...';
+  api('/api/update/'+kind,{method:'POST',body:'{}'}).then(function(r){
+    el.textContent=r.message||(r.ok?'ok':'failed');
+  });
+}
 function testHeartbeat(){
   var el=document.getElementById('hbmsg'); el.textContent='sending ...';
   api('/api/heartbeat/test',{method:'POST',body:'{}'}).then(function(r){
@@ -898,6 +935,7 @@ function saveSettings(){
     hosts:{cpu_warn_pct:num('hcpu',90),mem_warn_pct:num('hmem',92),
            disk_warn_pct:num('hdisk',90),stale_minutes:num('hstale',10)},
     heartbeat:{enabled:chkVal('hben'),url:strVal('hburl'),interval_seconds:num('hbint',300)},
+    update:{check:chkVal('upchk'),auto_install:document.getElementById('upauto')?chkVal('upauto'):true},
     access:{allow_cidrs:strVal('accallow').split(',').map(function(x){return x.trim();}).filter(Boolean),
             deny_cidrs:strVal('accdeny').split(',').map(function(x){return x.trim();}).filter(Boolean),
             trusted_proxies:strVal('accproxy').split(',').map(function(x){return x.trim();}).filter(Boolean)},
@@ -1398,6 +1436,8 @@ class Handler(BaseHTTPRequestHandler):
             data = self.scanner.snapshot()
             data["version"] = self.version
             data["settings"] = _mask_branch(data.get("settings") or {})
+            upd = getattr(self.scanner, "updater", None)
+            data["update"] = upd.snapshot() if upd else None
             role = user.get("role") or "viewer"
             data["auth"] = {
                 "enabled": self.auth_enabled, "user": user["user"], "role": role,
@@ -1643,6 +1683,19 @@ class Handler(BaseHTTPRequestHandler):
             self.scanner.audit(who, "settings changed",
                                ", ".join(sorted(payload.keys()))[:120])
             return self._json({"ok": True})
+        if path in ("/api/update/check", "/api/update/install"):
+            if not self._need("settings", user):
+                return
+            upd = getattr(self.scanner, "updater", None)
+            if upd is None:
+                return self._json({"ok": False, "message": "updates are not running in this mode"})
+            install = path.endswith("install")
+            if install and upd.mode == "notify":
+                return self._json({"ok": False, "message": "this copy can't install updates itself"})
+            self.scanner.audit(who, "update " + ("install" if install else "check"))
+            upd.check_now(install=install)
+            return self._json({"ok": True, "message": "installing - the console restarts in a minute"
+                               if install else "checking ..."})
         if path == "/api/heartbeat/test":
             if not self._need("settings", user):
                 return

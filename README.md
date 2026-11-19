@@ -1,4 +1,4 @@
-# NetSentinel 1.17
+# NetSentinel 1.18
 
 A network operations console for a small or mid-size office that runs on one PC, on
 your own network, with no cloud account and no agent on the devices. It answers four
@@ -19,7 +19,35 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 
 ---
 
-## What's new in 1.17 — build artefacts from the command line
+## What's new in 1.18 — it updates itself
+
+| Change | What it does |
+|---|---|
+| **Automatic updates** | Every 6 hours NetSentinel checks the newest published release on GitHub. A newer, correctly signed version is downloaded, installed and started on its own; the console is back in under a minute. |
+| **Signed releases only** | `latest.json` is signed (Ed25519) on the publisher's PC and pins the SHA-256 of every file. A release without a valid signature, or a file that doesn't match, is never installed. Needs the `cryptography` package (bundled in the exe). |
+| **Automatic rollback** | The old version waits 25 seconds after handing over; if the new one stops, the old one is put back. A version that fails to come up three times in a row is also rolled back, and skipped from then on. |
+| **Settings → Updates** | Current and newest version, last check, *Check now*, *Install now*, and switches for checking and for installing automatically. Admins see an "update available" badge in the header. |
+| **Command line** | `--check-update` shows whether a newer version exists; `--update-now` installs it (start NetSentinel again afterwards). |
+
+How each kind of install updates:
+
+| You run | On update |
+|---|---|
+| `NetSentinel.exe` (Windows) | the exe replaces itself (the old one is kept as `NetSentinel.exe.old` until the new one has run for 3 minutes) and restarts in a new window |
+| `run.bat` / Setup install (Python source) | the app files are replaced, with a backup in `%USERPROFILE%\.netsentinel\update\backup`, and it restarts in a new window |
+| `NetSentinel.pyz` / Mac `.app` | it only tells you that a new version is available |
+
+The folder holding `NetSentinel.exe` must be writable by the account that runs it (not `C:\Program Files`).
+
+### Publishing a release (maintainer)
+
+1. Bump `__version__` in `netscan/__init__.py`, commit and push.
+2. `git tag v1.18.1 && git push origin v1.18.1` — GitHub Actions builds the exe and the app zip and creates a **draft** release. Installed copies never see drafts.
+3. On the Mac that holds the signing key: `python3 tools/sign_release.py v1.18.1` — checks the files, signs `latest.json`, uploads it and publishes the release.
+
+The signing key is `~/.config/netsentinel-release/update-signing-key.pem`. It is never committed. Keep a backup of it: without it no future update can be signed, and every install would need a manual reinstall.
+
+## What was new in 1.17 — build artefacts from the command line
 
 | Artefact | Command | Runs on |
 |---|---|---|
