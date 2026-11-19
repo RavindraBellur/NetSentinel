@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title NetSentinel - start at login
+title Prahari - start at login
 
 net session >nul 2>&1
 if errorlevel 1 (
@@ -11,13 +11,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo   Registering NetSentinel to start when this user logs in ...
-schtasks /Create /TN "NetSentinel" /TR "\"%CD%\run.bat\"" /SC ONLOGON /RL HIGHEST /F
+echo   Registering Prahari to start when this user logs in ...
+schtasks /Create /TN "Prahari" /TR "\"%CD%\run.bat\"" /SC ONLOGON /RL HIGHEST /F
 if errorlevel 1 (
   echo   Could not register the task.
 ) else (
   echo.
-  echo   Done. NetSentinel will scan the network and open the dashboard
+  echo   Done. Prahari will scan the network and open the dashboard
   echo   at http://127.0.0.1:8777 every time you log in.
   echo   Remove it later with autostart_remove.bat
 )

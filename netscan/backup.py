@@ -101,7 +101,7 @@ def listing(limit=20):
 
 
 def verify(path):
-    """Is this file a usable NetSentinel database?"""
+    """Is this file a usable Prahari database?"""
     try:
         conn = sqlite3.connect(path)
         ok = conn.execute("PRAGMA integrity_check").fetchone()[0]
@@ -127,7 +127,7 @@ def restore(path, confirm=False):
     if not ok:
         return False, f"that file is not a healthy database: {tables}"
     if "incidents" not in tables or "samples" not in tables:
-        return False, "that file is a database, but not a NetSentinel one"
+        return False, "that file is a database, but not a Prahari one"
     stamp = _stamp()
     current = store.DB_PATH
     keep = f"{current}.pre-restore-{stamp}"

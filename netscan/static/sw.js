@@ -1,5 +1,5 @@
-/* NetSentinel service worker: the console works offline for the shell, live data always fresh. */
-const CACHE = 'netsentinel-v2';
+/* Prahari service worker: the console works offline for the shell, live data always fresh. */
+const CACHE = 'prahari-v3';
 const SHELL = ['/', '/manifest.json', '/static/icon-192.png', '/static/icon-512.png'];
 
 self.addEventListener('install', (event) => {

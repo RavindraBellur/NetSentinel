@@ -1,21 +1,21 @@
-"""Automatic updates from the NetSentinel GitHub releases.
+"""Automatic updates from the Prahari GitHub releases.
 
 Every published release carries three files next to each other:
 
-    NetSentinel.exe        the single-file Windows build
-    NetSentinel-app.zip    the app code (netscan/, netsentinel.py, ...) for source installs
+    Prahari.exe        the single-file Windows build
+    Prahari-app.zip    the app code (netscan/, netsentinel.py, ...) for source installs
     latest.json            {"manifest": "<json text>", "sig": "<base64 Ed25519 signature of that text>"}
 
     manifest = {"version": "1.17.1", "tag": "v1.17.1",
-                "assets": {"exe": {"file": "NetSentinel.exe", "sha256": "...", "size": n},
-                           "app": {"file": "NetSentinel-app.zip", "sha256": "...", "size": n}}}
+                "assets": {"exe": {"file": "Prahari.exe", "sha256": "...", "size": n},
+                           "app": {"file": "Prahari-app.zip", "sha256": "...", "size": n}}}
 
 latest.json is signed on the publisher's PC with a key that never leaves it (tools/sign_release.py), and
 GitHub only serves it once the release is published, so a draft or a tampered asset is never installed: the
 signature covers the manifest, and the manifest pins the SHA-256 of every file.
 
 Installing:
-  * Windows exe   - download beside the running exe, rename the running exe to NetSentinel.exe.old
+  * Windows exe   - download beside the running exe, rename the running exe to Prahari.exe.old
                     (Windows allows renaming a running exe), move the new one into place, restart.
   * source install - back up the files it replaces, unpack the zip over the app folder, restart.
   * .pyz / Mac .app - only reports that a new version is available.
@@ -139,9 +139,9 @@ def spawn(cmd):
     return subprocess.Popen(cmd, **kwargs)
 
 
-def _get(url, timeout=60, limit=MAX_SIZE):
-    req = urllib.request.Request(url, headers={"User-Agent": f"NetSentinel/{__version__}",
-                                               "Cache-Control": "no-cache"})
+def _get(url, timeout=60, limit=MAX_SIZE, headers=None):
+    req = urllib.request.Request(url, headers=dict({"User-Agent": f"Prahari/{__version__}",
+                                                    "Cache-Control": "no-cache"}, **(headers or {})))
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         data = resp.read(limit + 1)
     if len(data) > limit:
@@ -150,7 +150,7 @@ def _get(url, timeout=60, limit=MAX_SIZE):
 
 
 def verify(latest, public_key=None):
-    """Return the manifest dict if latest.json is signed by the NetSentinel update key, else raise."""
+    """Return the manifest dict if latest.json is signed by the Prahari update key, else raise."""
     key = public_key or PUBLIC_KEY
     if key.startswith("__"):
         raise ValueError("this build has no update key")
@@ -290,21 +290,32 @@ class Updater:
                 "auto_install": self.auto_install, "can_install": self.mode != "notify",
                 "skipped": _read(BAD, [])}
 
-    def check_now(self, install=False):
+    def check_now(self, install=False, source=None):
+        """source: None = GitHub; or {"base": hub mirror URL, "headers": {...}} (still signature-checked)."""
         self._install_now = bool(install)
+        self._next_source = source
         self._kick.set()
 
     # -- work
-    def check_once(self, install=None):
-        """Check GitHub; install when allowed. Returns True when a restart is due."""
+    def check_once(self, install=None, source=None):
+        """Check GitHub (or a head-office mirror); install when allowed. Returns True when a restart is due.
+
+        A mirror only changes WHERE the files come from: latest.json must still carry a valid
+        signature from the Prahari key, and every file must match the signed checksum."""
         with self._lock:
             self.status, self.error = "checking", ""
+            self._source = source
             try:
                 try:
-                    raw = _get(LATEST_URL, timeout=20, limit=64 * 1024)
+                    if source:
+                        raw = _get(source["base"].rstrip("/") + "/latest.json", timeout=20, limit=64 * 1024,
+                                   headers=source.get("headers"))
+                    else:
+                        raw = _get(LATEST_URL, timeout=20, limit=64 * 1024)
                 except urllib.error.HTTPError as exc:
                     if exc.code == 404:
-                        raise ValueError("no signed release published on GitHub yet")
+                        raise ValueError("no signed release published on GitHub yet" if not source
+                                         else "the head office has not published a release yet")
                     raise
                 manifest = verify(json.loads(raw))
                 self.last_check = time.time()
@@ -338,7 +349,11 @@ class Updater:
         if not asset:
             raise ValueError(f"release {manifest['version']} has no {key} build")
         tag = manifest.get("tag") or "v" + manifest["version"]
-        data = _get(ASSET_URL.format(tag=tag, file=asset["file"]))
+        source = getattr(self, "_source", None)
+        if source:
+            data = _get(source["base"].rstrip("/") + "/" + asset["file"], headers=source.get("headers"))
+        else:
+            data = _get(ASSET_URL.format(tag=tag, file=asset["file"]))
         if hashlib.sha256(data).hexdigest() != asset["sha256"]:
             raise ValueError(f"{asset['file']} does not match the signed checksum - not installed")
         return data
@@ -360,7 +375,7 @@ class Updater:
             with open(new, "wb") as fh:
                 fh.write(data)
         except OSError as exc:
-            raise ValueError(f"can't write next to {exe} ({exc}) - move NetSentinel to a folder you can write to")
+            raise ValueError(f"can't write next to {exe} ({exc}) - move Prahari to a folder you can write to")
         _remove(old)
         os.replace(exe, old)
         try:
@@ -440,9 +455,10 @@ class Updater:
             self._kick.clear()
             # "Install now" installs; "Check now" only checks; the timer follows the auto-install setting
             install = True if self._install_now else (False if manual else None)
-            self._install_now = False
+            source = getattr(self, "_next_source", None) if manual else None
+            self._install_now, self._next_source = False, None
             if manual or self.cfg.get("check", True):
-                if self.check_once(install=install) and self.on_restart:
+                if self.check_once(install=install, source=source) and self.on_restart:
                     self.on_restart()
                     return
             self._kick.wait(CHECK_EVERY)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build NetSentinel.app - a double-clickable macOS application bundle.
+"""Build Prahari.app - a double-clickable macOS application bundle.
 
-    python3 make_mac_app.py        ->  dist/NetSentinel.app
+    python3 make_mac_app.py        ->  dist/Prahari.app
 
 It is a normal .app: a folder with Info.plist, an icon and a launcher that starts the
 console and opens the dashboard. No compiler involved, so it can be built anywhere.
@@ -12,38 +12,38 @@ import struct
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "dist", "NetSentinel.app")
+OUT = os.path.join(HERE, "dist", "Prahari.app")
 
 INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>NetSentinel</string>
-  <key>CFBundleDisplayName</key><string>NetSentinel</string>
+  <key>CFBundleName</key><string>Prahari</string>
+  <key>CFBundleDisplayName</key><string>Prahari</string>
   <key>CFBundleIdentifier</key><string>in.hotelgroup.netsentinel</string>
-  <key>CFBundleVersion</key><string>1.28.0</string>
-  <key>CFBundleShortVersionString</key><string>1.28.0</string>
+  <key>CFBundleVersion</key><string>1.31.0</string>
+  <key>CFBundleShortVersionString</key><string>1.31.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleExecutable</key><string>NetSentinel</string>
+  <key>CFBundleExecutable</key><string>Prahari</string>
   <key>CFBundleIconFile</key><string>netsentinel</string>
   <key>LSMinimumSystemVersion</key><string>10.13</string>
   <key>LSUIElement</key><false/>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSHumanReadableCopyright</key><string>NetSentinel</string>
+  <key>NSHumanReadableCopyright</key><string>Prahari</string>
 </dict>
 </plist>
 """
 
 LAUNCHER = """#!/bin/bash
-# NetSentinel - macOS launcher
+# Prahari - macOS launcher
 DIR="$(cd "$(dirname "$0")/../Resources/app" && pwd)"
 cd "$DIR" || exit 1
 if [ ! -x ".venv/bin/python" ]; then
-  osascript -e 'display notification "First run: installing, this takes a minute" with title "NetSentinel"' 2>/dev/null
-  ./install-mac.sh >> "$HOME/Library/Logs/NetSentinel-install.log" 2>&1
+  osascript -e 'display notification "First run: installing, this takes a minute" with title "Prahari"' 2>/dev/null
+  ./install-mac.sh >> "$HOME/Library/Logs/Prahari-install.log" 2>&1
 fi
 if [ ! -x ".venv/bin/python" ]; then
-  osascript -e 'display alert "NetSentinel" message "Setup failed. See ~/Library/Logs/NetSentinel-install.log"'
+  osascript -e 'display alert "Prahari" message "Setup failed. See ~/Library/Logs/Prahari-install.log"'
   exit 1
 fi
 exec .venv/bin/python netsentinel.py "$@"
@@ -89,7 +89,7 @@ def main():
     os.makedirs(res)
     with open(os.path.join(OUT, "Contents", "Info.plist"), "w", encoding="utf-8") as fh:
         fh.write(INFO_PLIST)
-    launcher = os.path.join(macos, "NetSentinel")
+    launcher = os.path.join(macos, "Prahari")
     with open(launcher, "w", encoding="utf-8") as fh:
         fh.write(LAUNCHER)
     os.chmod(launcher, 0o755)
@@ -98,7 +98,7 @@ def main():
     icon = os.path.join(res, "netsentinel.icns")
     print("icon:", "written" if make_icns(icon) else "skipped (Pillow not installed)")
     print(f"built {OUT}")
-    print("Open it with:  open dist/NetSentinel.app    (or double-click in Finder)")
+    print("Open it with:  open dist/Prahari.app    (or double-click in Finder)")
     return 0
 
 

@@ -253,7 +253,7 @@ def local_network(subnet_override=None):
 
 def _fetch_json(url, timeout=5):
     req = urllib.request.Request(
-        url, headers={"User-Agent": "NetSentinel/1.0", "Accept": "application/json,text/plain,*/*"}
+        url, headers={"User-Agent": "Prahari/1.0", "Accept": "application/json,text/plain,*/*"}
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read(200000).decode("utf-8", "replace")

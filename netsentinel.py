@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NetSentinel - find every device on your LAN, then show who is using the internet.
+"""Prahari - find every device on your LAN, then show who is using the internet.
 
 Run with no arguments on Windows (double click run.bat): it scans the network it
 is plugged into and opens a dashboard at http://127.0.0.1:8777 .
@@ -32,7 +32,7 @@ from netscan.report import text_report  # noqa: E402
 
 def banner():
     print("=" * 62)
-    print(f" NetSentinel {__version__}  -  LAN devices + bandwidth monitor")
+    print(f" Prahari {__version__}  -  LAN devices + bandwidth monitor")
     print("=" * 62)
 
 
@@ -174,9 +174,9 @@ def main(argv=None):
     parser.add_argument("--refresh-oui", action="store_true", help="download the IEEE vendor registry and exit")
     parser.add_argument("--report", metavar="FILE", help="write the text report to FILE")
     parser.add_argument("--check-update", action="store_true",
-                        help="check GitHub for a newer NetSentinel and exit")
+                        help="check GitHub for a newer Prahari and exit")
     parser.add_argument("--update-now", action="store_true",
-                        help="download and install the newest NetSentinel, then exit (start it again after)")
+                        help="download and install the newest Prahari, then exit (start it again after)")
     parser.add_argument("--selftest-update", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--limits", action="store_true", help="print the known limits of this build and exit")
     args = parser.parse_args(argv)
@@ -203,7 +203,7 @@ def main(argv=None):
         if snap["error"]:
             print(f"  problem     : {snap['error']}")
         elif restart:
-            print(f"  installed {snap['latest']} - start NetSentinel again to run it")
+            print(f"  installed {snap['latest']} - start Prahari again to run it")
         elif snap["status"] == "available":
             print("  an update is available: run with --update-now"
                   if snap["can_install"] else f"  download it from {snap['notes_url']}")
@@ -573,7 +573,7 @@ def main(argv=None):
     # Sign-in is always required (since 1.27), on this PC too. --no-auth is for development only.
     auth_enabled = not args.no_auth
     if args.no_auth:
-        print("  WARNING: --no-auth - anyone who can open the dashboard controls NetSentinel.")
+        print("  WARNING: --no-auth - anyone who can open the dashboard controls Prahari.")
     from netscan import osauth
     windows_login = osauth.available() and (settings.get("auth") or {}).get("windows_login", True)
     if auth_enabled:
@@ -585,7 +585,7 @@ def main(argv=None):
                 print("   Sign in with your Windows administrator account")
                 print("   (the user name and password you use to log in to this PC).")
                 print()
-                print("   A spare NetSentinel account was also created:")
+                print("   A spare Prahari account was also created:")
             else:
                 print("   First run: a dashboard account was created")
             print(f"   user      : {created[0]}")
@@ -639,7 +639,7 @@ def main(argv=None):
         print(f"  SSO         : NOT ACTIVE - {webui.serve.oidc_error}")
     elif sso_cfg.get("enabled"):
         print(f"  SSO         : {sso_cfg.get('issuer')} (roles from '{sso_cfg.get('role_claim')}')")
-    print(f"  sign-in     : {('required - Windows administrators of this PC, or NetSentinel accounts' if windows_login else 'required') if auth_enabled else 'OFF (--no-auth)'}")
+    print(f"  sign-in     : {('required - Windows administrators of this PC, or Prahari accounts' if windows_login else 'required') if auth_enabled else 'OFF (--no-auth)'}")
     print(f"  transport   : {'HTTPS (TLS on)' if tls_arg else 'HTTP - use --tls for HTTPS'}")
     _tail = tailnet.summary()
     if _tail:

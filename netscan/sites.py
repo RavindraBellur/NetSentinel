@@ -1,6 +1,6 @@
 """Multi-site: branches report to a head-office hub.
 
-Every branch runs NetSentinel with `--branch http://hub:8777 --token <token>`.
+Every branch runs Prahari with `--branch http://hub:8777 --token <token>`.
 Every 30 s it POSTs a compact summary (health, devices, open incidents, internet
 line, top talkers) to the hub, authenticated by a per-site token that the hub
 stores as a SHA-256 hash. The hub shows an "All locations" view, and raises an
@@ -127,7 +127,7 @@ class BranchReporter(threading.Thread):
         req = urllib.request.Request(
             url + REPORT_PATH, data=payload, method="POST",
             headers={"Content-Type": "application/json", "X-NS": "1",
-                     "X-Branch-Token": token, "User-Agent": "NetSentinel-branch/1.5"},
+                     "X-Branch-Token": token, "User-Agent": "Prahari-branch/1.5"},
         )
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
@@ -146,7 +146,7 @@ class BranchReporter(threading.Thread):
             try:
                 import json as _json
                 from . import upgrade as upgrade_mod
-                upgrade_mod.pending_update(_json.loads(body or "{}"), url, log=self.log)
+                upgrade_mod.pending_update(_json.loads(body or "{}"), url, log=self.log, token=token)
             except Exception as exc:
                 self.last_error = f"update check failed: {exc}"[:140]
         else:
@@ -245,7 +245,7 @@ def _alert(cfg, title, body, site="", severity="high"):
     try:
         if (cfg.get("email") or {}).get("enabled"):
             to = site_recipients(cfg, site) if site else []
-            alerts.send_email(cfg, f"[NetSentinel] {title}", body, to=to or None)
+            alerts.send_email(cfg, f"[Prahari] {title}", body, to=to or None)
         if (cfg.get("webhook") or {}).get("enabled"):
             alerts.send_webhook(cfg, {"text": f"{title}\n{body}", "severity": severity,
                                       "kind": "site", "site": site})

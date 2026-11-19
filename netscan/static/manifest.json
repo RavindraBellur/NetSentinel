@@ -1,6 +1,6 @@
 {
-  "name": "NetSentinel - network console",
-  "short_name": "NetSentinel",
+  "name": "Prahari - network console",
+  "short_name": "Prahari",
   "description": "Network discovery, monitoring and multi-site console",
   "start_url": "/",
   "display": "standalone",

@@ -1,10 +1,10 @@
 #!/bin/bash
-# NetSentinel - installer for macOS
+# Prahari - installer for macOS
 # Double-click "run-mac.command" instead if you just want to start it.
 set -e
 cd "$(dirname "$0")"
 echo "============================================================"
-echo "  NetSentinel - macOS setup"
+echo "  Prahari - macOS setup"
 echo "============================================================"
 
 PY=""

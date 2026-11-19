@@ -1,6 +1,6 @@
 """Sign in to the dashboard with a Windows account.
 
-The password is checked by Windows itself (LogonUserW) - NetSentinel never stores it. Members of
+The password is checked by Windows itself (LogonUserW) - Prahari never stores it. Members of
 the PC's Administrators group (or a domain group nested in it) get the admin role; other Windows
 users are refused unless Settings allows them a lower role.
 
@@ -9,7 +9,7 @@ Admin detection copes with UAC: an administrator's interactive logon token is "s
 therefore counts as an administrator; otherwise CheckTokenMembership decides.
 
 Only available on Windows. Elsewhere `available()` is False and sign-in falls back to
-NetSentinel's own accounts.
+Prahari's own accounts.
 """
 
 from __future__ import annotations

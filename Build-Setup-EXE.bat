@@ -1,6 +1,6 @@
 @echo off
 rem ===========================================================================
-rem  Build ONE self-contained installer:  dist\NetSentinel-Setup.exe
+rem  Build ONE self-contained installer:  dist\Prahari-Setup.exe
 rem
 rem  Uses only what Windows already has (PowerShell + IExpress + makecab), so
 rem  nothing has to be downloaded to build it. The result is a single .exe that
@@ -9,22 +9,22 @@ rem  installs the extras, makes shortcuts and starts the app.
 rem ===========================================================================
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
-title NetSentinel - build setup exe
+title Prahari - build setup exe
 
-set "VER=1.28.0"
+set "VER=1.31.0"
 set "DIST=%CD%\dist"
 set "STAGE=%DIST%\staging"
-set "OUT=%DIST%\NetSentinel-Setup-%VER%.exe"
+set "OUT=%DIST%\Prahari-Setup-%VER%.exe"
 
 echo ============================================================
-echo   Building NetSentinel-Setup.exe  (version %VER%)
+echo   Building Prahari-Setup.exe  (version %VER%)
 echo ============================================================
 echo.
 
 where iexpress >nul 2>&1
 if errorlevel 1 (
   echo   iexpress.exe was not found. It ships with Windows, so this is unusual.
-  echo   Use build_exe.bat instead (single NetSentinel.exe via PyInstaller).
+  echo   Use build_exe.bat instead (single Prahari.exe via PyInstaller).
   pause
   exit /b 1
 )
@@ -39,8 +39,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   " 'netsentinel.ico','dashboard_lan.bat','open_dashboard.bat','allow_firewall.bat'," ^
   " 'enable_rdp.bat','uninstall.cmd','screenshot.png');" ^
   "$have = $items | Where-Object { Test-Path $_ };" ^
-  "Compress-Archive -Path $have -DestinationPath '%STAGE%\NetSentinel-app.zip' -Force"
-if not exist "%STAGE%\NetSentinel-app.zip" (
+  "Compress-Archive -Path $have -DestinationPath '%STAGE%\Prahari-app.zip' -Force"
+if not exist "%STAGE%\Prahari-app.zip" (
   echo   Could not create the archive.
   pause
   exit /b 1
@@ -70,14 +70,14 @@ echo   [3/4] Writing the installer directive ...
   echo DisplayLicense=
   echo FinishMessage=
   echo TargetName=%OUT%
-  echo FriendlyName=NetSentinel %VER% setup
+  echo FriendlyName=Prahari %VER% setup
   echo AppLaunched=bootstrap.cmd
   echo PostInstallCmd=<None>
   echo AdminQuietInstCmd=
   echo UserQuietInstCmd=
   echo SourceFiles=SourceFiles
   echo [Strings]
-  echo FILE0=NetSentinel-app.zip
+  echo FILE0=Prahari-app.zip
   echo FILE1=bootstrap.cmd
   echo [SourceFiles]
   echo SourceFiles0=%STAGE%\
@@ -95,7 +95,7 @@ if exist "%OUT%" (
   for %%F in ("%OUT%") do echo   Size:  %%~zF bytes
   echo.
   echo   Copy that single file to any Windows PC and run it. It will:
-  echo     - unpack NetSentinel to %%LOCALAPPDATA%%\NetSentinel
+  echo     - unpack Prahari to %%LOCALAPPDATA%%\Prahari
   echo     - download and install Python silently only if it is missing
   echo     - install the optional extras, make shortcuts, start the app
   echo.

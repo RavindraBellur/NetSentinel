@@ -80,7 +80,7 @@ def refresh_oui(timeout=60):
     url = "https://standards-oui.ieee.org/oui/oui.csv"
     try:
         os.makedirs(_CACHE_DIR, exist_ok=True)
-        req = urllib.request.Request(url, headers={"User-Agent": "NetSentinel/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Prahari/1.0"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = r.read()
         if len(data) < 1000:

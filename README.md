@@ -1,4 +1,6 @@
-# NetSentinel 1.28
+# Prahari · प्रहरी — 1.31
+
+*the watchman on your network*
 
 
 A network operations console for a small or mid-size office that runs on one PC, on
@@ -20,7 +22,54 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 
 ---
 
-## What's new in 1.28 — UDP services found, and a fuller port catalogue
+## What's new in 1.31 — sensor history, charts and a wall map
+
+From the parallel Prahari copy's 1.31, reviewed, fixed and tested:
+
+| Feature | What it does |
+|---|---|
+| **Sensor history** | Every check is saved, kept for 30 days (cleaned up daily), so the trend survives a restart. Each row shows the last 30 checks as a colour strip; click a sensor for **24-hour, 7-day and 30-day** charts with the availability percentage. |
+| **Two more sensor types** | `service` (a Windows service via `sc query`, or a systemd unit) and `proc` (a running process). The name is passed as an argument, never through a shell. |
+| **Wall map** | A tab for the office TV: big colour tiles, one per hotel on the hub or one per *monitored* device on a site (a laptop that is only listed is not shown as down), refreshing every 3 s, with a full-screen button. |
+| **One broken panel no longer blanks the console** | A view that fails shows its error in that panel; the rest keeps working. |
+
+Fixed while merging: sensor history was never cleaned up (the 30-day promise did not hold), a bad `hours=` value crashed the history request, and the Wall map painted every unmonitored device red.
+
+## What was new in 1.30 — service checks, quiet hours, dependencies
+
+From the parallel Prahari copy's 1.29 and 1.30, reviewed, fixed and tested:
+
+| Feature | What it does |
+|---|---|
+| **Sensors** (new tab) | Checks you define: **http** (expect a status and a word on the page), **tcp**, **dns** (expect an address), **cert** (days until a certificate expires — also for devices with their own self-signed certificate), **snmp** (a value against a threshold — UPS battery, temperature), **ping**. Each has its own interval and limits, a short history, and alerts when it goes down *or* into warning, including when it is already failing on its first check. Sensors run in their own thread, so a slow website never delays the device checks. |
+| **Quiet hours** | Maintenance windows (`match | YYYY-MM-DD HH:MM | YYYY-MM-DD HH:MM | reason`) silence a device or a sensor without switching monitoring off — the event log still records what happened. A mistyped date is refused, not silently ignored. |
+| **Dependencies** | `child_ip = parent_ip`: when the switch is down, the printer behind it does not raise its own incident — one alert instead of a cascade, and it chains (a device behind the printer is quiet too). Removing a line really removes the dependency. |
+| **Device links** | `#device=192.168.1.5` in the address opens that device's panel directly; "last seen" shows a relative time. |
+
+| **Serve updates from the head office** | Settings → *Fleet update* → **Publish to branches**: the hub fetches the newest signed release from GitHub (or reads it from a folder, for an offline head office), **verifies the signature and every checksum**, and serves that exact copy to its branches — so hotels never need to reach GitHub. Branches download it with their branch token and verify the signature **again** with the key built into Prahari before installing. The hub decides *when*; it cannot change *what*: a file altered on the hub is refused by every branch. (This replaces the parallel copy's unsigned "publish a zip" — same convenience, without letting whoever controls the hub run code on every hotel.) |
+
+## What was new in 1.29 — NetSentinel is now Prahari
+
+**Prahari** (प्रहरी) is Sanskrit for *watchman, one who keeps watch* — the same idea as "sentinel",
+in a word that reads naturally in an Indian office or hotel. The dashboard, sign-in page, emails,
+PDF reports, phone app, installer, shortcuts and the exe (`Prahari.exe`) all carry the new name.
+
+Nothing is lost on the way:
+
+| Kept as it was | Why |
+|---|---|
+| Data folder `~/.netsentinel` (history, settings, users, backups) | an existing install keeps everything |
+| Program file `netsentinel.py` and the `netscan` package | installed copies only accept updates with file names they know; `prahari.py` is a launcher with the new name |
+| GitHub repository `RavindraBellur/NetSentinel` | it is where every installed copy looks for signed updates |
+
+Copies running NetSentinel 1.18–1.28 update to Prahari by themselves like any other release (an
+existing `NetSentinel.exe` keeps its file name). Running the new setup on a PC that has a
+NetSentinel install upgrades that folder in place and removes the old auto-start task, firewall
+rules and desktop shortcut, so the two never run side by side.
+
+To rebrand again later: `python3 rename.py --name "Netra" --devanagari "नेत्र" --tagline "the eye on your network"`.
+
+## What was new in 1.28 — UDP services found, and a fuller port catalogue
 
 | Change | What it does |
 |---|---|
@@ -28,7 +77,7 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 | **Switches and APs identified over SNMP again** | SNMP and NetBIOS are UDP, so they were never in the TCP scan — and the identification step waited for them there. Result: only the gateway was ever identified over SNMP, and Windows names over NetBIOS never were. Both now work for every device. |
 | **Your SNMP communities are used** | The community names in Settings → Discovery are tried first (they were ignored), all at once — about 1 s per device instead of 5.6 s. |
 | **Mail ports scanned** | SMTP 25, submission 587, IMAPS 993, POP3S 995 are now in the TCP scan. |
-| **Port catalogue: 49 services** | From the "Prahari" copy's 1.28: RTSP 554 (high — cameras often stream without a password), IPP 631, recorder web ports 8000/8081/8888/9000, and the services above, each with why it matters, how to close it and when it is legitimate. |
+| **Port catalogue: 49 services** | From the parallel Prahari copy's 1.28: RTSP 554 (high — cameras often stream without a password), IPP 631, recorder web ports 8000/8081/8888/9000, and the services above, each with why it matters, how to close it and when it is legitimate. |
 
 Not probed: NetBIOS datagram (138) does not answer requests, so it cannot be detected from outside;
 SNMPv3-only devices answer only with SNMPv3 credentials (Settings → SNMPv3).
@@ -37,7 +86,7 @@ SNMPv3-only devices answer only with SNMPv3 credentials (Settings → SNMPv3).
 
 | Change | What it does |
 |---|---|
-| **Sign in with Windows** | Sign-in is now always required, on the PC itself too. Use your normal Windows account and password (`ravi`, `OFFICE\ravi` or `ravi@domain`) — Windows checks the password, NetSentinel never stores it. Administrators of the PC get admin rights; other Windows users are refused unless Settings allows them Viewer or Engineer. NetSentinel's own accounts keep working. Proven on the build machine against a real administrator and a real standard account. |
+| **Sign in with Windows** | Sign-in is now always required, on the PC itself too. Use your normal Windows account and password (`ravi`, `OFFICE\ravi` or `ravi@domain`) — Windows checks the password, Prahari never stores it. Administrators of the PC get admin rights; other Windows users are refused unless Settings allows them Viewer or Engineer. Prahari's own accounts keep working. Proven on the build machine against a real administrator and a real standard account. |
 | **Lockout that actually locks** | After five wrong passwords the sign-in form now refuses the next attempt *before* checking it — before, the counter only changed the message and guessing could continue. |
 | **Update now** | When a signed new version is out, admins see **Update now to x.y.z** in the header: confirm, it installs, restarts and reloads by itself. If the new version does not start, the current one is put back. |
 | **Known limits** | Settings → *Known limits*, `/limits.md`, or `run.bat --limits`: what is proven and how, what has never run on real equipment, and what is not built. Shipped as `LIMITS.md`. |
@@ -50,8 +99,8 @@ SNMPv3-only devices answer only with SNMPv3 credentials (Settings → SNMPv3).
 | **Ask AI** | A header button opens a chat about the live network ("why is the internet slow at reception?"). Answers use only the data that user is allowed to see. |
 | **Safety rails for active features** | The factory-password check and PoE power-cycling refuse any address outside private LAN ranges, whatever the allow-list says; switching either on records who did it and when (shown in Settings and the Events log); power-cycling stays dry-run until explicitly set live. The EULA now spells out the operator's responsibility. |
 | **Secrets never reach the browser** | Telegram token, SNMPv3 passwords, SSO client secret, push URL and AI key are masked for every user (viewers used to receive some of them), and a masked value can never overwrite the real one. The AI key is encrypted at rest with the other secrets. |
-| **Proof: 40 automated tests, run on Windows before every build** | Signed updates (bad signature, tampering, path traversal, rollback, hub fleet update), Claude diagnosis with a fake API (fallback on refusal/errors/limits), factory-password checks against fake devices, backup restore with live WAL data, SNMPv3 RFC 3414 vectors, the SLA PDF, and the live console (no secrets in the API, CSRF guard, valid dashboard JavaScript). The build then proves the real `NetSentinel.exe` replaces itself while running and refuses a tampered release. A failing test stops the release. Run them yourself: `python -m unittest discover -s tests -t .` |
-| **scapy no longer bundled in the exe** | scapy is GPL-2.0; it stays available for source installs (packet capture) but is never shipped inside NetSentinel.exe, and the build fails if it ever is. |
+| **Proof: 40 automated tests, run on Windows before every build** | Signed updates (bad signature, tampering, path traversal, rollback, hub fleet update), Claude diagnosis with a fake API (fallback on refusal/errors/limits), factory-password checks against fake devices, backup restore with live WAL data, SNMPv3 RFC 3414 vectors, the SLA PDF, and the live console (no secrets in the API, CSRF guard, valid dashboard JavaScript). The build then proves the real `Prahari.exe` replaces itself while running and refuses a tampered release. A failing test stops the release. Run them yourself: `python -m unittest discover -s tests -t .` |
+| **scapy no longer bundled in the exe** | scapy is GPL-2.0; it stays available for source installs (packet capture) but is never shipped inside Prahari.exe, and the build fails if it ever is. |
 
 ## What was new in 1.25 — the housekeeping that protects what you already have
 
@@ -71,7 +120,7 @@ What it checks, and what it deliberately does **not** do, is spelled out in sect
 
 ## What was new in 1.23 — topology, SLA report, exposure, guarded fixes, secrets at rest
 
-Everything below (the 1.22 and 1.23 work done in the renamed copy) arrives in NetSentinel as 1.23.
+Everything below (the 1.22 and 1.23 work done in the parallel copy) arrives in Prahari as 1.23.
 
 ### Exposure, guarded fixes and secrets at rest
 
@@ -94,14 +143,14 @@ PC that has never installed anything.
 
 ## What was new in 1.22 — one line again: 1.21 features + signed auto-update
 
-1.19–1.21 were developed as a renamed copy ("Prahari"); 1.18 added signed automatic updates.
-1.22 brings both together under the NetSentinel name, so every install — including 1.18 —
+1.19–1.21 were developed in a parallel copy; 1.18 added signed automatic updates.
+1.22 brings both together under the Prahari name, so every install — including 1.18 —
 updates itself to it.
 
 | Change | Why |
 |---|---|
 | **Everything from 1.19, 1.20 and 1.21** | Anomaly detection, capacity forecasting, ntfy phone alerts, security posture, nightly database backup, per-site role scoping, Telegram bot, SNMPv3, Wi-Fi health. |
-| **Fleet update now uses signed releases** | The hub only says *which version* the branches should run (Settings → *Fleet update*); each branch installs the newest release signed with the NetSentinel key. Before, the hub supplied a URL and hash itself, so anyone with access to the hub could run code on every branch — and it could not update the single-file exe at all. |
+| **Fleet update now uses signed releases** | The hub only says *which version* the branches should run (Settings → *Fleet update*); each branch installs the newest release signed with the Prahari key. Before, the hub supplied a URL and hash itself, so anyone with access to the hub could run code on every branch — and it could not update the single-file exe at all. |
 | **Fixes** | `--agent` no longer crashes on start; Windows batch files have Windows line endings again; the GitHub build works. |
 
 ## What was new in 1.21 — SNMPv3 and real Wi-Fi health
@@ -133,21 +182,21 @@ updates itself to it.
 
 | Change | What it does |
 |---|---|
-| **Automatic updates** | Every 6 hours NetSentinel checks the newest published release on GitHub. A newer, correctly signed version is downloaded, installed and started on its own; the console is back in under a minute. |
+| **Automatic updates** | Every 6 hours Prahari checks the newest published release on GitHub. A newer, correctly signed version is downloaded, installed and started on its own; the console is back in under a minute. |
 | **Signed releases only** | `latest.json` is signed (Ed25519) on the publisher's PC and pins the SHA-256 of every file. A release without a valid signature, or a file that doesn't match, is never installed. Needs the `cryptography` package (bundled in the exe). |
 | **Automatic rollback** | The old version waits 25 seconds after handing over; if the new one stops, the old one is put back. A version that fails to come up three times in a row is also rolled back, and skipped from then on. |
 | **Settings → Updates** | Current and newest version, last check, *Check now*, *Install now*, and switches for checking and for installing automatically. Admins see an "update available" badge in the header. |
-| **Command line** | `--check-update` shows whether a newer version exists; `--update-now` installs it (start NetSentinel again afterwards). |
+| **Command line** | `--check-update` shows whether a newer version exists; `--update-now` installs it (start Prahari again afterwards). |
 
 How each kind of install updates:
 
 | You run | On update |
 |---|---|
-| `NetSentinel.exe` (Windows) | the exe replaces itself (the old one is kept as `NetSentinel.exe.old` until the new one has run for 3 minutes) and restarts in a new window |
+| `Prahari.exe` (Windows) | the exe replaces itself (the old one is kept as `Prahari.exe.old` until the new one has run for 3 minutes) and restarts in a new window |
 | `run.bat` / Setup install (Python source) | the app files are replaced, with a backup in `%USERPROFILE%\.netsentinel\update\backup`, and it restarts in a new window |
-| `NetSentinel.pyz` / Mac `.app` | it only tells you that a new version is available |
+| `Prahari.pyz` / Mac `.app` | it only tells you that a new version is available |
 
-The folder holding `NetSentinel.exe` must be writable by the account that runs it (not `C:\Program Files`).
+The folder holding `Prahari.exe` must be writable by the account that runs it (not `C:\Program Files`).
 
 ### Publishing a release (maintainer)
 
@@ -161,22 +210,22 @@ The signing key is `~/.config/netsentinel-release/update-signing-key.pem`. It is
 
 | Artefact | Command | Runs on |
 |---|---|---|
-| `NetSentinel.exe` (single file, Python bundled) | `pip install pyinstaller` then `pyinstaller netsentinel.spec` | Windows, no Python needed |
-| `NetSentinel-Setup.exe` (installer) | `Build-Setup-EXE.bat` | Windows, downloads Python if missing |
-| `NetSentinel.pyz` (one file, 126 KB) | `python3 make_pyz.py` | any OS with Python 3.9+ |
-| `NetSentinel.app` (double-click) | `python3 make_mac_app.py` | macOS |
-| `NetSentinel.exe` in the cloud | GitHub Actions workflow | Windows runner, no PC of yours |
+| `Prahari.exe` (single file, Python bundled) | `pip install pyinstaller` then `pyinstaller netsentinel.spec` | Windows, no Python needed |
+| `Prahari-Setup.exe` (installer) | `Build-Setup-EXE.bat` | Windows, downloads Python if missing |
+| `Prahari.pyz` (one file, 126 KB) | `python3 make_pyz.py` | any OS with Python 3.9+ |
+| `Prahari.app` (double-click) | `python3 make_mac_app.py` | macOS |
+| `Prahari.exe` in the cloud | GitHub Actions workflow | Windows runner, no PC of yours |
 
 The zip ships `netsentinel.spec` (so the exe build is one command, no long flag list),
-`make_pyz.py` and `make_mac_app.py`, plus the ready-made `dist/NetSentinel.pyz` and
-`dist/NetSentinel.app.zip`.
+`make_pyz.py` and `make_mac_app.py`, plus the ready-made `dist/Prahari.pyz` and
+`dist/Prahari.app.zip`.
 
 ## What was new in 1.16 — runs on a Mac, and an exe without Windows
 
 | Change | Why |
 |---|---|
 | **macOS support** | `./install-mac.sh` then `./run-mac.command` (double-clickable). Gateway, interfaces, mask, MAC and DNS now read with `route`/`ifconfig`/`scutil`, and ping uses the macOS flags. |
-| **Cloud build for the exe** | `.github/workflows/build-windows-exe.yml` builds `NetSentinel.exe` on a real Windows runner in GitHub Actions and hands you the artifact — no Windows PC, no toolchain, free for a public repo. |
+| **Cloud build for the exe** | `.github/workflows/build-windows-exe.yml` builds `Prahari.exe` on a real Windows runner in GitHub Actions and hands you the artifact — no Windows PC, no toolchain, free for a public repo. |
 
 ## What was new in 1.15 — nothing gets lost when the line drops
 
@@ -264,7 +313,7 @@ The zip ships `netsentinel.spec` (so the exe build is one command, no long flag 
 | Feature | What it does |
 |---|---|
 | **Multiple locations** | One head-office console shows every branch: health, devices, open incidents, public IP, internet rate and last contact. Branches push to the hub every 30 s with a per-site token; a branch that goes quiet for 5 minutes raises "Lost contact" and another alert when it returns. |
-| **One-file installer** | `Build-Setup-EXE.bat` produces `dist\NetSentinel-Setup.exe` using only Windows' own tools. That single exe unpacks the app, **downloads and installs Python silently if it is missing**, installs the extras, makes shortcuts and starts the console. |
+| **One-file installer** | `Build-Setup-EXE.bat` produces `dist\Prahari-Setup.exe` using only Windows' own tools. That single exe unpacks the app, **downloads and installs Python silently if it is missing**, installs the extras, makes shortcuts and starts the console. |
 | **Uninstaller + icon** | `uninstall.cmd` (with `/purge` for config and history), desktop/Start-menu shortcuts and a proper application icon. |
 
 ## What was new in 1.4
@@ -301,7 +350,7 @@ The zip ships `netsentinel.spec` (so the exe build is one command, no long flag 
 | 2 | Double-click **`run.bat`** — scans the network, starts monitoring, opens the console. |
 | 3 | Allow the Windows Firewall prompt if it appears. |
 
-Later runs need only `run.bat`. Single-file build: **`build_exe.bat`** → `dist\NetSentinel.exe`.
+Later runs need only `run.bat`. Single-file build: **`build_exe.bat`** → `dist\Prahari.exe`.
 Start at login: **`autostart_install.bat`** (as Administrator) / remove with `autostart_remove.bat`.
 Share the console with another laptop: **`dashboard_lan.bat`** (+ `allow_firewall.bat` once).
 Reopen the console: **`open_dashboard.bat`**.
@@ -317,27 +366,27 @@ Everything below is a single command; nothing needs a flag list typed by hand.
 ```
 pip install pyinstaller
 pyinstaller netsentinel.spec
-:: result: dist\NetSentinel.exe
+:: result: dist\Prahari.exe
 ```
 
 **Windows installer that also fetches Python:**
 
 ```
-Build-Setup-EXE.bat          :: result: dist\NetSentinel-Setup-<version>.exe
+Build-Setup-EXE.bat          :: result: dist\Prahari-Setup-<version>.exe
 ```
 
 **One file that runs anywhere Python exists (built here, tested):**
 
 ```
-python3 make_pyz.py          :: result: dist/NetSentinel.pyz  (126 KB)
-python3 dist/NetSentinel.pyz --help
+python3 make_pyz.py          :: result: dist/Prahari.pyz  (126 KB)
+python3 dist/Prahari.pyz --help
 ```
 
 **macOS application bundle (double-click):**
 
 ```
-python3 make_mac_app.py      :: result: dist/NetSentinel.app
-open dist/NetSentinel.app
+python3 make_mac_app.py      :: result: dist/Prahari.app
+open dist/Prahari.app
 ```
 
 **No Windows machine at all:** push the folder to GitHub and run the included workflow —
@@ -351,7 +400,7 @@ GitHub's Windows runner.
 ## 1a. On a Mac
 
 ```
-cd NetSentinel
+cd Prahari
 ./install-mac.sh        (once)
 ./run-mac.command       (or double-click it in Finder)
 ```
@@ -368,18 +417,18 @@ Windows PC, with **no downloads required to build** (it uses `iexpress.exe` and
 PowerShell, which ship with Windows):
 
 ```
-Build-Setup-EXE.bat      ->  dist\NetSentinel-Setup-1.5.0.exe
+Build-Setup-EXE.bat      ->  dist\Prahari-Setup-1.5.0.exe
 ```
 
 That `.exe` is the whole product. When someone runs it, `bootstrap.cmd` inside it:
 
-1. unpacks the app to `%LOCALAPPDATA%\NetSentinel` (or `%ProgramData%` with `/allusers`)
+1. unpacks the app to `%LOCALAPPDATA%\Prahari` (or `%ProgramData%` with `/allusers`)
 2. finds Python 3.9+; **if there is none, it downloads the official installer from
    python.org and runs it silently** (`/quiet PrependPath=1 Include_pip=1`)
 3. creates the private environment and installs the two optional extras
 4. makes a desktop shortcut, a Start-menu entry and an uninstaller
 5. opens the firewall for the dashboard and flow/syslog — **only if run as Administrator**
-6. starts NetSentinel
+6. starts Prahari
 
 Options: `/autostart` (also start at every login, needs Administrator), `/no-run`,
 `/allusers`. A log is written to `%TEMP%\netsentinel-setup.log`.
@@ -388,8 +437,8 @@ Two other routes, if you prefer:
 
 | Route | Produces | Needs |
 |---|---|---|
-| `Build-Setup-EXE.bat` | `NetSentinel-Setup.exe` (installer, downloads Python if missing) | nothing extra |
-| `build_exe.bat` | `dist\NetSentinel.exe` (the app only, Python bundled inside, no install) | Python on the *build* PC (PyInstaller is installed automatically) |
+| `Build-Setup-EXE.bat` | `Prahari-Setup.exe` (installer, downloads Python if missing) | nothing extra |
+| `build_exe.bat` | `dist\Prahari.exe` (the app only, Python bundled inside, no install) | Python on the *build* PC (PyInstaller is installed automatically) |
 | `makensis installer.nsi` | classic Add/Remove Programs installer | NSIS, if you already use it |
 
 **Honest note:** these build scripts are written to run on Windows, and I could not
@@ -411,7 +460,7 @@ send me the console output and I will fix it.
 | **Reports** | Availability per device (1/7/30 days), MTTR, incidents by severity, worst offenders, internet line changes, CSV export. |
 | **Locations** | Head-office view: every branch's health, devices, incidents, public IP, internet rate and last contact. Only shown when this PC is a hub or a branch. |
 | **Users** | Administrator only: every account with its role, created date and last sign-in; add a user, set anyone's password, remove an account. The admin row is marked "you" and cannot be removed. |
-| **Events** | Syslog lines, audit trail and NetSentinel's own events, severity-coded. |
+| **Events** | Syslog lines, audit trail and Prahari's own events, severity-coded. |
 | **Settings** | Everything configurable, with **Send test alert**. |
 
 ![Devices](screenshot-devices.png)
@@ -462,7 +511,7 @@ sends nothing off the machine. (A key-based AI layer is easy to add later if you
 
 A fixed threshold ("latency over 150 ms is bad") is wrong in both directions: it misses a
 device that has doubled but stayed under the limit, and it cries wolf on a slow-but-normal
-microwave link at peak hour. NetSentinel keeps, for each device, a separate mean and spread for
+microwave link at peak hour. Prahari keeps, for each device, a separate mean and spread for
 **each hour of the day** from 14 days of samples, then scores each new reading against the
 profile for *that hour*. A reading is reported only when it is at least 3σ out **and**
 materially bad (≥25 ms, ≥5% loss) — which is why the alert reads "12σ above the usual 5 ms"
@@ -583,7 +632,7 @@ already collected.
 
 ## 4. "Who is using the internet" — the honest part
 
-A PC cannot see other devices' traffic by itself. NetSentinel supports three collectors
+A PC cannot see other devices' traffic by itself. Prahari supports three collectors
 and always labels which one the numbers came from.
 
 | Collector | What you get | Needs |
@@ -680,7 +729,7 @@ once, on the hub, to prepare the chain
   run.bat --fleet-setup C:\fleet --fleet-sites "Udaipur - Lake Road,Jaipur - MI Road,Mount Abu,Jodhpur,Rishikesh,Goa - Candolim" --branch https://hub.yourgroup.in
 
 at each hotel
-  copy the NetSentinel folder + its setup-<site>.cmd there, run it
+  copy the Prahari folder + its setup-<site>.cmd there, run it
 ```
 
 `--fleet-setup` writes `setup-<site>.cmd` (installs if needed, then joins that site),
@@ -720,7 +769,7 @@ which is exactly what happens when the power or the ISP at that property goes do
 
 ## 5b. How the email actually gets sent
 
-NetSentinel sends mail the way an old-fashioned script does: it **talks to an SMTP server
+Prahari sends mail the way an old-fashioned script does: it **talks to an SMTP server
 you already have** — no third-party service, no account with me, nothing to sign up for.
 You give it a mailbox and it uses it as the sender.
 
@@ -746,12 +795,12 @@ the code.
 
 | Trigger | Subject |
 |---|---|
-| Incident opens | `[NetSentinel] <Device> is down` — with root cause, confidence, the numbered actions and the evidence |
-| Incident escalates (severity rises) | `[NetSentinel] ESCALATED: <Device> …` |
-| Incident resolves | `[NetSentinel] Resolved: <Device> …` |
-| A branch stops reporting for N minutes | `[NetSentinel] Lost contact with <site>` → that site's managers |
-| The branch comes back | `[NetSentinel] <site> is back` |
-| TLS certificate inside the warning window | `[NetSentinel] TLS certificate expires in N days` |
+| Incident opens | `[Prahari] <Device> is down` — with root cause, confidence, the numbered actions and the evidence |
+| Incident escalates (severity rises) | `[Prahari] ESCALATED: <Device> …` |
+| Incident resolves | `[Prahari] Resolved: <Device> …` |
+| A branch stops reporting for N minutes | `[Prahari] Lost contact with <site>` → that site's managers |
+| The branch comes back | `[Prahari] <site> is back` |
+| TLS certificate inside the warning window | `[Prahari] TLS certificate expires in N days` |
 | Host agent over threshold (CPU/disk/service) | an event, and the incident path if it crosses the poller thresholds |
 
 Mail is rate-limited by design: one message per state change, not one per poll, so a
@@ -793,7 +842,7 @@ run.bat --sla-report "Udaipur - Lake Road" --sla-month 2026-11 --sla-out reports
 ```
 
 or in the console: **Reports → Last month (PDF)**. The file is named
-`NetSentinel-SLA-<site>-<YYYY-MM>.pdf` and contains:
+`Prahari-SLA-<site>-<YYYY-MM>.pdf` and contains:
 
 | Page | Contents |
 |---|---|
@@ -864,7 +913,7 @@ words, and why the hub needs its own heartbeat.
 ```
    CORPORATE OFFICE (one PC)                          HOTEL (one PC each)
    ┌───────────────────────────┐                     ┌───────────────────────────┐
-   │ NetSentinel  --hub        │   every 30 seconds  │ NetSentinel  --branch     │
+   │ Prahari  --hub        │   every 30 seconds  │ Prahari  --branch     │
    │ • scans its own LAN       │◀──── HTTPS POST ────│ • scans the hotel LAN     │
    │ • polls its own devices   │  /api/branch/report │ • polls printers, DVR, APs│
    │ • keeps every hotel row   │   X-Branch-Token    │ • raises its own incidents│
@@ -1064,7 +1113,7 @@ minimum severity; Slack and Teams webhook URLs. Press **Send test alert** and it
 each channel separately. Example CEF line:
 
 ```
-CEF:0|NetSentinel|NetSentinel|1.7|high|Kitchen AP is down|8|dvchost=Kitchen AP
+CEF:0|Prahari|Prahari|1.7|high|Kitchen AP is down|8|dvchost=Kitchen AP
   src=192.168.1.4 cs1Label=RootCause cs1=AP does not answer cs2Label=Category cs2=Wi-Fi
   cn1Label=Confidence cn1=75
 ```
@@ -1093,7 +1142,7 @@ run.bat --lan --tls --tls-cert C:\certs\chain.pem --tls-key C:\certs\key.pem ^
 **Building the exe without a Windows PC.** Push this folder to a GitHub repository and run
 the included workflow (`.github/workflows/build-windows-exe.yml`, *Actions → Build Windows
 EXE → Run workflow*). It builds on `windows-latest` with PyInstaller, smoke-tests
-`NetSentinel.exe --help`, and uploads the single-file exe as a downloadable artifact. That
+`Prahari.exe --help`, and uploads the single-file exe as a downloadable artifact. That
 is the only way to get a genuine Windows binary without a Windows machine — nothing on a
 Linux or macOS box can cross-compile one, which is why the zip ships source plus the build
 scripts.
@@ -1160,10 +1209,10 @@ Ports probed: 21 22 23 53 80 81 443 445 515 554 631 1883 3389 5000 5060 5357 590
 ## 11. Remote access
 
 Each device row has a **remote** button: RDP (3389), VNC (5900), SSH (22), Telnet (23),
-web admin page, RTSP live view in VLC, **Wake on LAN**, continuous ping. NetSentinel ships
+web admin page, RTSP live view in VLC, **Wake on LAN**, continuous ping. Prahari ships
 no remote-desktop server of its own — it drives Windows' tools. To control a PC that has
 none enabled, copy `enable_rdp.bat` to it and run it as Administrator once. Remote actions
-run only from the PC hosting NetSentinel unless you start with `--allow-remote-control`.
+run only from the PC hosting Prahari unless you start with `--allow-remote-control`.
 
 ---
 
@@ -1269,14 +1318,14 @@ History, incidents, events, users and labels live next to it in `netsentinel.db`
   The hub is a collector, not a relay: there is no hosted relay service in the middle,
   and branches keep working on their own if the hub is unreachable.
 - Availability percentages come from the poll history (14 days kept by default), so a
-  report for 30 days only covers the days NetSentinel was actually running.
+  report for 30 days only covers the days Prahari was actually running.
 
 ---
 
 ## Files
 
 ```
-NetSentinel/
+Prahari/
 ├─ Build-Setup-EXE.bat            build the single-file installer (zero downloads)
 ├─ bootstrap.cmd                  the installer logic: app + Python + extras + shortcuts
 ├─ uninstall.cmd                  remove it (/purge = also config and history)

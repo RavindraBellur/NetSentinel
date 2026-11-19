@@ -1,8 +1,8 @@
-NetSentinel - End User Licence Agreement (short form)
+Prahari - End User Licence Agreement (short form)
 
 Copyright (c) 2026. All rights reserved.
 
-1. LICENCE. You may install and use NetSentinel on computers that you own or are
+1. LICENCE. You may install and use Prahari on computers that you own or are
    authorised to administer. One installation per site is the intended model; there is
    no per-device limit.
 
@@ -27,7 +27,7 @@ Copyright (c) 2026. All rights reserved.
    your account and its terms. No telemetry is sent to the authors.
 
 6. THIRD-PARTY COMPONENTS. The optional packages (cryptography, anthropic, psutil, and scapy
-   for source installs only - it is never bundled in NetSentinel.exe) keep their
+   for source installs only - it is never bundled in Prahari.exe) keep their
    own licences; see sbom.json. The Python standard library is used under the PSF licence.
 
 7. ACTIVE FEATURES. Two optional features act on devices instead of only watching them:

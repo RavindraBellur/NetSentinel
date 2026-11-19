@@ -1,4 +1,4 @@
-"""Settings for NetSentinel, stored in %USERPROFILE%\\.netsentinel\\config.json.
+"""Settings for Prahari, stored in %USERPROFILE%\\.netsentinel\\config.json.
 
 Everything the dashboard can change lives here so it survives restarts, and the
 file is plain JSON so an administrator can inspect or deploy it with Group Policy
@@ -96,6 +96,9 @@ DEFAULTS = {
                 "priv_password": "", "port": 161},
     "wifi": {"enabled": True, "client_oid": ""},
     "sla_email": {"enabled": False, "day": 1, "hour": 7, "to": [], "last_sent": ""},
+    "sensors": [],
+    "maintenance": [],
+    "dependencies": {},
     "defaults_check": {"enabled": False, "i_own_this_network": False, "allow_ips": [],
                        "max_attempts": 12, "delay_ms": 350},
     "backup": {"enabled": True, "every_hours": 24, "keep_daily": 7, "keep_weekly": 4},

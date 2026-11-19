@@ -55,7 +55,7 @@ DIAGNOSIS_SCHEMA = {
     "additionalProperties": False,
 }
 
-SYSTEM_PROMPT = """You are the diagnosis engine of NetSentinel, a network monitoring console that runs on one PC
+SYSTEM_PROMPT = """You are the diagnosis engine of Prahari, a network monitoring console that runs on one PC
 inside a small or mid-size office or hotel (often in India, often with no IT person on site). You receive the
 evidence for one incident and produce a diagnosis for the person who has to fix it.
 
@@ -77,7 +77,7 @@ How to reason:
 - Only use the data provided. Never invent devices, numbers or log lines.
 """
 
-CHAT_SYSTEM = """You are the assistant inside NetSentinel, a network monitoring console for an office or hotel.
+CHAT_SYSTEM = """You are the assistant inside Prahari, a network monitoring console for an office or hotel.
 The person asking is IT or operations staff. Each question comes with the live monitoring data they are allowed to
 see.
 

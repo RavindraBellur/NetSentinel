@@ -1,5 +1,5 @@
 #!/bin/bash
-# Double-click this in Finder to start NetSentinel on macOS.
+# Double-click this in Finder to start Prahari on macOS.
 cd "$(dirname "$0")"
 if [ ! -x ".venv/bin/python" ]; then
   echo "First run - setting things up ..."
@@ -7,7 +7,7 @@ if [ ! -x ".venv/bin/python" ]; then
 fi
 clear
 echo "============================================================"
-echo "  NetSentinel is starting"
+echo "  Prahari is starting"
 echo "  It will scan this network and open the dashboard."
 echo "  Keep this window open. Press Ctrl+C to stop."
 echo "============================================================"

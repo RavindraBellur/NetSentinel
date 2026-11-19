@@ -74,7 +74,7 @@ CATALOGUE = {
     161: ("SNMP", MEDIUM,
          "v2c sends the community string in clear text; 'public' means anyone can read the "
          "whole configuration and rewrite it with 'private'.",
-         "Switch to SNMPv3 with auth+priv (NetSentinel: Settings -> SNMPv3). If you must keep v2c, "
+         "Switch to SNMPv3 with auth+priv (Prahari: Settings -> SNMPv3). If you must keep v2c, "
          "change the community to a long random string and allow only the monitoring host.",
          "Yes, for monitoring - over v3."),
     389: ("LDAP", LOW,
@@ -130,7 +130,7 @@ CATALOGUE = {
     3389: ("RDP", HIGH,
          "The single most attacked Windows service. Ransomware crews scan for it constantly.",
          "Never port-forward it. Restrict it to an admin subnet, enable Network Level "
-         "Authentication (NetSentinel: enable_rdp.bat does this), require MFA, and prefer VPN or "
+         "Authentication (Prahari: enable_rdp.bat does this), require MFA, and prefer VPN or "
          "Tailscale for remote access.",
          "Yes, but only behind VPN/MFA."),
     5432: ("PostgreSQL", HIGH, "Database exposure.",

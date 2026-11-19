@@ -1,8 +1,8 @@
-# NetSentinel — known limits, stated plainly
+# Prahari — known limits, stated plainly
 
 A tool that hides its limits is worse than one that does not have them. Everything below is
 true of this release as shipped. Where a limit is a choice it says so; where something is
-untested it says that too. (Adapted from the "Prahari" copy's list and corrected for NetSentinel.)
+untested it says that too. (Adapted from the parallel Prahari copy's list and corrected for Prahari.)
 
 ---
 
@@ -13,7 +13,7 @@ exe is made; one failure stops the release. Run it yourself: `python -m unittest
 
 | Area | Proven against |
 |---|---|
-| `NetSentinel.exe` build | built and started on Windows for every release |
+| `Prahari.exe` build | built and started on Windows for every release |
 | Signed self-update of the exe | the real exe replaces itself while running and refuses a tampered release (Windows) |
 | Signed update of source installs, rollback, hub fleet update | local signed releases, broken and failing builds |
 | Windows sign-in | real Windows administrator and standard accounts created on the build machine |
@@ -23,6 +23,9 @@ exe is made; one failure stops the release. Run it yourself: `python -m unittest
 | Backup restore | a live database with unsaved write-ahead-log data |
 | SNMPv3 key derivation | the RFC 3414 published test vectors |
 | UDP service probes (NTP, NetBIOS, SNMP, UPnP, mDNS) | fake services on the build machine; mDNS also seen on a real office LAN |
+| Sensors (http, tcp, dns, cert incl. self-signed, snmp thresholds), quiet hours, dependencies | local web, HTTPS and fake SNMP services on the build machine |
+| Head-office update mirror | a real hub console + a branch copy: publish, token-only download, unsigned/tampered refused at the hub and at the branch |
+| Sensor history and retention, service/process checks, Wall map | the test suite and a browser render of every tab (no page errors) |
 | SLA PDF | generated and checked |
 
 ## 2. What has never run on real equipment
@@ -65,12 +68,12 @@ The first month on a real network will find things. Report them; each one become
 - **Claude sends data out only when switched on.** Then each incident's evidence and each
   question go to Anthropic's API under your key. Off by default.
 - **Updates are checked on GitHub every 6 hours** (Settings → Updates to turn off). Only
-  releases signed with the NetSentinel key install; a version that fails to start is rolled back.
+  releases signed with the Prahari key install; a version that fails to start is rolled back.
 - **Email needs an app password** (Gmail, Zoho, Outlook refuse normal passwords from scripts).
 - **Nothing inside a building can report that the building is offline** — that is what the
   free healthchecks.io heartbeat is for.
 
-## 5. Security of NetSentinel itself
+## 5. Security of Prahari itself
 
 - **TLS is opt-in.** Without `--tls` the console speaks plain HTTP on your LAN.
 - **Secrets are encrypted at rest only if `cryptography` is installed** (it is bundled in the exe).

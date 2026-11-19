@@ -1,10 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-title NetSentinel - installer
+title Prahari - installer
 
 echo ============================================================
-echo   NetSentinel 1.28.0 - installer
+echo   Prahari 1.31.0 - installer
 echo ============================================================
 echo.
 
@@ -46,7 +46,7 @@ echo.
 echo   Installing optional extras ^(scapy for traffic capture, psutil for NIC rates^) ...
 "%VPY%" -m pip install -r requirements.txt --quiet --disable-pip-version-check
 if errorlevel 1 (
-  echo   Extras failed to install - that is fine, NetSentinel runs without them.
+  echo   Extras failed to install - that is fine, Prahari runs without them.
 ) else (
   echo   Extras installed.
 )
@@ -75,7 +75,7 @@ echo ============================================================
 echo.
 echo   Optional, for per-device internet usage:
 echo     * Enable SNMP ^(community: public^) on your router / switch, or
-echo     * Install Npcap from https://npcap.com  and run NetSentinel
+echo     * Install Npcap from https://npcap.com  and run Prahari
 echo       as Administrator so it can count packets per device.
 echo.
 echo   To start automatically at login, right click

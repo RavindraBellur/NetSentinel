@@ -51,7 +51,7 @@ def verify(secret, submitted, at=None, window=WINDOW):
     return False
 
 
-def provisioning_uri(secret, account, issuer="NetSentinel"):
+def provisioning_uri(secret, account, issuer="Prahari"):
     """otpauth:// URI for a QR code."""
     from urllib.parse import quote
 

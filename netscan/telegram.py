@@ -46,7 +46,7 @@ def _fmt_status(scanner):
     h = snap.get("health") or {}
     inc = snap.get("open_incidents") or []
     wan = (snap.get("wan") or {}).get("ips") or []
-    lines = [f"*{(snap.get('site') or 'NetSentinel')}*",
+    lines = [f"*{(snap.get('site') or 'Prahari')}*",
              f"health {h.get('score')}%  ·  {h.get('up')} up / {h.get('degraded')} degraded / {h.get('down')} down",
              f"open incidents: {len(inc)}"]
     if wan:
@@ -91,11 +91,11 @@ def handle(scanner, text, chat_id, allowed):
     text = (text or "").strip()
     if allowed and str(chat_id) not in [str(a) for a in allowed]:
         return (f"This chat ({chat_id}) is not authorised. Add that number in "
-                f"NetSentinel → Settings → Telegram to allow it.")
+                f"Prahari → Settings → Telegram to allow it.")
     cmd = text.split()[0].lower() if text else ""
     args = text.split()[1:]
     if cmd in ("/start", "/help"):
-        return ("NetSentinel — commands:\n"
+        return ("Prahari — commands:\n"
                 "/status — health and open incidents\n"
                 "/incidents — the open ones with ids\n"
                 "/ack <id> — acknowledge an incident\n"

@@ -1,7 +1,7 @@
 """Zero-cost remote access: find this PC on a Tailscale tailnet.
 
 Tailscale is free for a small number of users and devices, works through CGNAT and needs
-no port-forward, no public IP and no domain. If it is installed, NetSentinel can print the
+no port-forward, no public IP and no domain. If it is installed, Prahari can print the
 address to open from anywhere, and the fleet generator can use it as the hub address
 instead of you hunting for an IP.
 

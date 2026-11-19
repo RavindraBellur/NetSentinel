@@ -1,7 +1,7 @@
 """Instant alerts on your phone - free, no account, no SMS bill.
 
 Uses ntfy.sh: you pick a topic name (a long random string is your secret), subscribe to it
-in the ntfy app, and NetSentinel POSTs to it. Nothing else is needed, and the same code can post
+in the ntfy app, and Prahari POSTs to it. Nothing else is needed, and the same code can post
 to any custom JSON webhook instead.
 """
 
@@ -44,7 +44,7 @@ def send(cfg, title, body, severity="high", url=None):
             target = f"{base}/{topic}"
             data = (body or "").encode("utf-8")
             req = urllib.request.Request(target, data=data, method="POST", headers={
-                "Title": (title or "NetSentinel")[:120],
+                "Title": (title or "Prahari")[:120],
                 "Priority": str(PRIORITY.get(severity, 4)),
                 "Tags": TAGS.get(severity, "warning"),
                 "Content-Type": "text/plain; charset=utf-8",

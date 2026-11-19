@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover
     Ed25519PrivateKey = None
 
 ROOT = _env.ROOT
-TOP = ["netscan", "netsentinel.py", "requirements.txt", "README.md", "EULA.txt", "sbom.json", "LIMITS.md"]
+TOP = ["netscan", "netsentinel.py", "requirements.txt", "README.md", "EULA.txt", "sbom.json"]
 with open(os.path.join(ROOT, "netscan", "__init__.py"), encoding="utf-8") as _fh:
     CURRENT = re.search(r'__version__ = "([^"]+)"', _fh.read()).group(1)
 
@@ -106,10 +106,10 @@ class SignedUpdates(unittest.TestCase):
             for name, data in (extra or {}).items():
                 z.writestr(name, data)
         app = buf.getvalue()
-        with open(os.path.join(self.rel, "NetSentinel-app.zip"), "wb") as fh:
+        with open(os.path.join(self.rel, "Prahari-app.zip"), "wb") as fh:
             fh.write(app + (b"x" if tamper else b""))
         manifest = json.dumps({"version": version, "tag": "v" + version,
-                               "assets": {"app": {"file": "NetSentinel-app.zip",
+                               "assets": {"app": {"file": "Prahari-app.zip",
                                                   "sha256": hashlib.sha256(app).hexdigest(),
                                                   "size": len(app)}}}, sort_keys=True)
         key = Ed25519PrivateKey.generate() if foreign_key else self.key

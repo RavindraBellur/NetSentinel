@@ -1,4 +1,4 @@
-# NetSentinel runs on the Python standard library.
+# Prahari runs on the Python standard library.
 # These extras unlock optional features and are safe to skip - except cryptography,
 # which HTTPS certificate creation and SSO token verification need.
 
@@ -9,7 +9,7 @@ cryptography>=41
 anthropic>=0.125
 
 # passive per-device traffic counting (needs Npcap installed on Windows).
-# GPL-2.0: installed on your own PC for source installs only - never bundled into NetSentinel.exe.
+# GPL-2.0: installed on your own PC for source installs only - never bundled into Prahari.exe.
 scapy>=2.5
 
 # throughput of this PC's own network cards

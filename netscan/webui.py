@@ -166,7 +166,8 @@ APP_JS = r"""
 var S = {data:null, tab:(location.hash||'#overview').slice(1), dev:{q:'',f:'all',mon:false},
          inc:null, draw:null, trafficTab:'now'};
 var TABS=[['overview','Overview','&#9635;'],['devices','Devices','&#9776;'],
-          ['incidents','Incidents','&#9888;'],['topology','Topology','&#9700;'],['exposure','Exposure','&#9937;'],
+          ['incidents','Incidents','&#9888;'],['topology','Topology','&#9700;'],['sensors','Sensors','&#9741;'],['map','Wall map','&#9638;'],
+          ['exposure','Exposure','&#9937;'],
           ['traffic','Traffic','&#8599;'],
           ['reports','Reports','&#9783;'],['locations','Locations','&#8853;'],
           ['users','Users','&#9787;'],
@@ -233,8 +234,8 @@ function head(){
           (h.open_incidents?'<span class="badge sev-high">'+h.open_incidents+' open</span>':
           '<span class="badge sev-info">no incidents</span>');
   document.getElementById('h-title').textContent=({overview:'Overview',devices:'Devices',
-    incidents:'Incidents',traffic:'Traffic',reports:'Reports',locations:'Locations',
-    users:'Users',events:'Events',settings:'Settings'})[S.tab]||'Overview';
+    incidents:'Incidents',topology:'Topology',sensors:'Sensors',map:'Wall map',exposure:'Exposure',traffic:'Traffic',reports:'Reports',
+    locations:'Locations',users:'Users',events:'Events',settings:'Settings'})[S.tab]||'Overview';
   document.getElementById('h-sub').textContent=(d.site?d.site+' · ':'')+
     (loc.network?loc.network:'')+(st.last_scan?' · last scan '+st.last_scan:'')+
     (d.monitor&&d.monitor.enabled?(' · poll '+(d.monitor.interval||60)+'s'):' · monitoring off');
@@ -448,7 +449,7 @@ function devRow(x){
     '<td class="mono">'+esc(x.ip)+'</td>'+
     '<td class="small">'+esc(name)+(x.title?'<div class="muted small" style="max-width:200px;overflow:hidden;'+
       'text-overflow:ellipsis;white-space:nowrap">'+esc(x.title)+'</div>':'')+'</td>'+
-    '<td class="small mono">'+esc(x.mac||'&mdash;')+'<div class="muted" style="font-family:inherit">'+
+    '<td class="small mono">'+(x.mac?esc(x.mac):'&mdash;')+'<div class="muted" style="font-family:inherit">'+
       esc(x.vendor||'')+'</div></td>'+
     '<td>'+spark(x.history)+'<div class="small muted">'+ms(x.latency_ms)+'</div></td>'+
     '<td class="small">'+((x.loss_pct||0)>0?('<span style="color:'+((x.loss_pct>=10)?'#d9534f':'#e0a02c')+'">'+
@@ -461,7 +462,7 @@ function devRow(x){
 // --------------------------------------------------------------- incidents --
 function viewIncidents(){
   var d=S.data, all=(d.incidents||[]);
-  if(!all.length) return '<div class="card"><div class="empty">No incidents yet. NetSentinel opens one when a '+
+  if(!all.length) return '<div class="card"><div class="empty">No incidents yet. Prahari opens one when a '+
     'monitored device stays down or degraded for the configured number of polls.</div></div>';
   return '<div class="card"><h2>Incident history</h2><table><thead><tr><th>Severity</th><th>Incident</th>'+
     '<th>Device</th><th>Opened</th><th>State</th><th>Confidence</th></tr></thead><tbody>'+
@@ -499,6 +500,139 @@ function checkDefaults(){
       (r.why||r.state);
     poll();
   });
+}
+function sensorChart(points, w, h){
+  if(!points || !points.length) return '<div class="empty" style="padding:10px">no history yet</div>';
+  var n=points.length, step=Math.max(1, w/n);
+  var bars=points.map(function(p,i){
+    var col=p.state==='up'?'#3ba55d':(p.state==='warn'?'#e0a02c':'#d9534f');
+    var bh=p.state==='up'? h*0.25 : (p.state==='warn'? h*0.6 : h*0.95);
+    return '<rect x="'+(i*step).toFixed(1)+'" y="'+(h-bh).toFixed(1)+'" width="'+Math.max(1,step-0.6).toFixed(1)+
+      '" height="'+bh.toFixed(1)+'" fill="'+col+'"></rect>';
+  }).join('');
+  return '<svg width="100%" height="'+h+'" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" '+
+    'style="display:block;background:#0f151c;border-radius:6px">'+bars+'</svg>';
+}
+function openSensor(id){
+  var sn=((S.data||{}).insights||{}).sensors||{}, row=(sn.sensors||[]).filter(function(r){return r.id===id;})[0];
+  if(!row) return;
+  document.getElementById('drawer-title').textContent=row.name+' · '+row.type;
+  document.getElementById('drawer-body').innerHTML=
+    kv('Target',esc(row.target))+kv('State',stDot(row.state)+esc(row.state))+
+    kv('Last result',esc(row.message||''))+kv('Checked every',(row.interval||60)+' s')+
+    '<div style="margin:14px 0 4px" class="small muted">LAST 24 HOURS</div>'+
+    '<div id="ch24"><div class="empty">loading&hellip;</div></div>'+
+    '<div style="margin:14px 0 4px" class="small muted">LAST 7 DAYS</div>'+
+    '<div id="ch168"><div class="empty">loading&hellip;</div></div>'+
+    '<div style="margin:14px 0 4px" class="small muted">LAST 30 DAYS</div>'+
+    '<div id="ch720"><div class="empty">loading&hellip;</div></div>';
+  document.getElementById('drawer').classList.add('open');
+  [[24,'ch24'],[168,'ch168'],[720,'ch720']].forEach(function(pair){
+    api('/api/sensor/history?id='+encodeURIComponent(id)+'&hours='+pair[0]).then(function(r){
+      var el=document.getElementById(pair[1]);
+      el.innerHTML = sensorChart(r.points, 900, 70) +
+        '<div class="small muted" style="margin-top:4px">availability '+
+        (r.up_pct==null? 'n/a' : r.up_pct+'%') + ' over ' + (r.count||0) + ' checks</div>';
+    });
+  });
+}
+function viewMap(){
+  var d=S.data||{}, hub=(d.sites||{});
+  var tiles='', title='';
+  if(hub.enabled && (hub.branches||[]).length){
+    title='All locations';
+    tiles=(hub.branches||[]).map(function(b){
+      var h=(b.health||{}).score, on=b.online!==false;
+      var col=!on?'#d9534f':(h>=90?'#3ba55d':(h>=70?'#e0a02c':'#d9534f'));
+      return '<div style="background:#111820;border:1px solid #1d2733;border-left:6px solid '+col+
+        ';border-radius:10px;padding:16px 18px">'+
+        '<div style="font:600 17px system-ui;margin-bottom:6px">'+esc(b.name)+'</div>'+
+        '<div style="font:600 34px system-ui;color:'+col+'">'+(on? (h!=null? h+'%' : '—') : 'NO CONTACT')+'</div>'+
+        '<div class="small muted">'+(b.devices||0)+' devices · '+((b.incidents||[]).length)+
+        ' incidents · '+ago(Math.round(Date.now()/1000-(b.age||0)))+'</div></div>';
+    }).join('');
+  } else {
+    title='Devices on this network';
+    // only what is actually monitored: a laptop that is merely listed is not "down"
+    tiles=(d.devices||[]).filter(function(x){
+      return ['up','degraded','down'].indexOf(x.state)>=0; }).map(function(x){
+      var col=x.state==='up'?'#3ba55d':(x.state==='degraded'?'#e0a02c':'#d9534f');
+      return '<div style="background:#111820;border:1px solid #1d2733;border-left:6px solid '+col+
+        ';border-radius:10px;padding:14px 16px">'+
+        '<div style="font:600 15px system-ui;margin-bottom:4px">'+esc(x.label||x.hostname||x.ip)+'</div>'+
+        '<div style="font:600 26px system-ui;color:'+col+'">'+esc((x.state||'').toUpperCase())+'</div>'+
+        '<div class="small muted mono">'+esc(x.ip)+' · '+(x.latency_ms!=null? Math.round(x.latency_ms)+' ms':'—')+'</div></div>';
+    }).join('');
+  }
+  var hh=(d.health||{}).score;
+  return '<div class="kpis">'+
+    kpi('Health',(hh!=null?hh+'%':'—'),'whole network')+
+    kpi('Open incidents',(d.health||{}).open_incidents||0,'')+
+    kpi('Updated',new Date().toLocaleTimeString(),'refreshes every 3 s')+
+    '</div>'+
+    '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;'+
+    'margin-bottom:12px"><h2 style="margin:0">'+esc(title)+'</h2>'+
+    '<button class="sm" onclick="document.documentElement.requestFullscreen&&'+
+    'document.documentElement.requestFullscreen()">Full screen</button></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">'+
+    (tiles||'<div class="empty">nothing to show yet</div>')+'</div></div>';
+}
+function viewSensors(){
+  var sn=((S.data||{}).insights||{}).sensors||{}, rows=sn.sensors||[], c=sn.counts||{};
+  var kindOpts=['http','tcp','dns','cert','snmp','ping','service','proc'].map(function(k){
+    return '<option>'+k+'</option>'; }).join('');
+  var body=rows.length? rows.map(function(r){
+    var col=r.state==='down'?'sev-critical':(r.state==='warn'?'sev-high':(r.state==='up'?'sev-info':''));
+    var strip=(r.history||[]).slice(-30).map(function(h){
+      return '<span style="display:inline-block;width:4px;height:12px;margin-right:1px;border-radius:1px;'+
+        'background:'+(h.state==='up'?'#3ba55d':(h.state==='warn'?'#e0a02c':'#d9534f'))+'"></span>';
+    }).join('');
+    return '<tr onclick="openSensor(\''+esc(r.id)+'\')" style="cursor:pointer">'+
+      '<td><span class="badge '+col+'">'+esc(r.state)+'</span></td>'+
+      '<td>'+esc(r.name)+'</td><td class="mono small">'+esc(r.type)+'</td>'+
+      '<td class="mono small">'+esc(r.target)+'</td>'+
+      '<td class="small">'+esc(r.message||'')+'</td>'+
+      '<td class="small">'+(r.ts? ago(r.ts) : 'never')+'</td>'+
+      '<td class="num small">'+(r.interval||60)+'s</td>'+
+      '<td style="white-space:nowrap">'+strip+'</td>'+
+      '<td>'+(can('settings')?'<button class="sm ghost" onclick="delSensor(\''+esc(r.id)+'\')">remove</button>':'')+'</td></tr>';
+  }).join('') : '<tr><td colspan="8" class="empty">No sensors yet. Add one below - a page that '+
+     'must say a word, a port that must answer, a certificate that must not expire.</td></tr>';
+  return '<div class="kpis">'+
+    kpi('Sensors', sn.total||0, 'user-defined checks')+
+    kpi('Up', c.up||0, 'answering')+
+    kpi('Warning', c.warn||0, 'near a limit')+
+    kpi('Down', c.down||0, 'failed the check')+
+    '</div>'+
+    '<div class="card"><h2>Service checks</h2><table><thead><tr><th>State</th><th>Name</th>'+
+    '<th>Type</th><th>Target</th><th>Last result</th><th>Checked</th><th class="num">Every</th>'+
+    '<th>Trend</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>'+
+    (can('settings')? '<div class="card" style="margin-top:14px"><h2>Add a sensor</h2>'+
+    '<div class="grid3">'+fld('Name','snname','')+
+      '<div class="field"><label>Type</label><select id="sntype">'+kindOpts+'</select></div>'+
+      fld('Target (URL, host or name)','sntarget','')+'</div>'+
+    '<div class="grid3">'+fld('Port (tcp/cert)','snport','','number')+
+      fld('Expected text / status / IP','snexpect','')+
+      fld('Check every (seconds)','snint','60','number')+'</div>'+
+    '<div class="grid3">'+fld('Warn value (cert days, snmp)','snwarn','','number')+
+      fld('Critical value','sncrit','','number')+
+      fld('SNMP OID (snmp type)','snoid','')+'</div>'+
+    '<button class="sm" onclick="addSensor()">Add sensor</button> '+
+    '<span id="snmsg" class="small muted"></span></div>' : '');
+}
+function addSensor(){
+  var body={name:strVal('snname'),type:(document.getElementById('sntype')||{}).value||'http',
+    target:strVal('sntarget'),port:num('snport',0)||'',expect_text:strVal('snexpect'),
+    expect_status:num('snexpect',0)||'',interval:num('snint',60),
+    warn_value:num('snwarn',0)||'',crit_value:num('sncrit',0)||'',oid:strVal('snoid')};
+  if(!body.target){ document.getElementById('snmsg').textContent='a target is required'; return; }
+  api('/api/sensors/save',{method:'POST',body:JSON.stringify({sensor:body})}).then(function(r){
+    document.getElementById('snmsg').textContent = r.ok? 'added' : ('failed: '+(r.message||'?'));
+    poll();
+  });
+}
+function delSensor(id){
+  api('/api/sensors/delete',{method:'POST',body:JSON.stringify({id:id})}).then(function(){ poll(); });
 }
 function viewExposure(){
   var ex=((S.data||{}).insights||{}).exposure||{}, fs=ex.findings||[], c=ex.counts||{};
@@ -635,6 +769,21 @@ function loadReports(){
     S.reports=r; render();
   }).catch(function(){});
 }
+function publishFleet(){
+  var el=document.getElementById('pubmsg'); el.textContent='fetching and checking the signature ...';
+  api('/api/fleet/publish',{method:'POST',body:JSON.stringify({folder:strVal('pubdir')})}).then(function(r){
+    el.textContent=r.message||(r.ok?'published':'failed'); poll();
+  });
+}
+function saveQuiet(){
+  var el=document.getElementById('qmsg'); el.textContent='saving ...';
+  api('/api/quiet/save',{method:'POST',body:JSON.stringify({
+    maintenance:(document.getElementById('mtwin')||{}).value||'',
+    dependencies:(document.getElementById('deps')||{}).value||''})}).then(function(r){
+      el.textContent = r.ok? 'saved' : ('not saved - '+(r.message||'?'));
+      poll();
+  });
+}
 function slaFleet(){
   api('/api/sla/fleet',{method:'POST',body:'{}'}).then(function(r){
     alert(r.ok? ('Written '+r.count+' report(s) in '+r.dir) : ('Failed: '+(r.message||'?')));
@@ -706,7 +855,7 @@ function viewLocations(){
   var d=S.data||{}, br=d.branch||{}, hub=d.sites||{};
   if(!hub.enabled && br.sent){
     return '<div class="card"><h2>This site reports to head office</h2>'+
-      kv('Hub', esc((d.settings.branch||{}).hub_url||'&mdash;'))+
+      kv('Hub', (esc((d.settings.branch||{}).hub_url)||'&mdash;'))+
       kv('Reports sent', br.sent||0)+
       kv('Last successful report', br.age!=null? ago(Math.round(Date.now()/1000-br.age)) : 'never')+
       (br.error?'<div class="note bad" style="margin-top:10px">'+esc(br.error)+'</div>':
@@ -781,10 +930,10 @@ function openSite(name){
   document.getElementById('drawer-title').textContent=name+' - '+((b.health||{}).score||0)+'% health';
   document.getElementById('drawer-body').innerHTML=
     kv('Reporting', b.online?'yes':'no contact')+
-    kv('Version', esc(b.version||'&mdash;'))+kv('Devices', b.devices||0)+
+    kv('Version', (b.version?esc(b.version):'&mdash;'))+kv('Devices', b.devices||0)+
     kv('Monitored', b.monitored||0)+kv('Gateway', esc(b.gateway||'unknown'))+
-    kv('Public IP', esc(((b.wan||{}).ips||[]).join(', ')||'&mdash;'))+
-    kv('ISP', esc((b.wan||{}).isp||'&mdash;'))+
+    kv('Public IP', (esc(((b.wan||{}).ips||[]).join(', '))||'&mdash;'))+
+    kv('ISP', (esc((b.wan||{}).isp)||'&mdash;'))+
     kv('Internet down', bps((b.traffic||{}).down_bps||0))+
     kv('Last report', ago(Math.round(Date.now()/1000-(b.age||0))))+
     '<div style="margin:14px 0 4px" class="small muted">OPEN INCIDENTS</div>'+
@@ -909,13 +1058,13 @@ function viewEvents(){
 }
 
 // ---------------------------------------------------------------- settings --
+function fld(label,id,val,type){ return '<div class="field"><label>'+label+'</label><input type="'+
+  (type||'text')+'" id="'+id+'" value="'+esc(val==null?'':val)+'"></div>'; }
+function chk(label,id,val){ return '<div class="field"><span class="sw"><input type="checkbox" id="'+id+'" '+
+  (val?'checked':'')+'> '+label+'</span></div>'; }
 function viewSettings(){
   var s=(S.data.settings||{}), th=s.thresholds||{}, mon=s.monitor||{}, nf=s.netflow||{},
       sl=s.syslog||{}, em=s.email||{}, wh=s.webhook||{}, au=s.auth||{};
-  function fld(label,id,val,type){ return '<div class="field"><label>'+label+'</label><input type="'+
-    (type||'text')+'" id="'+id+'" value="'+esc(val==null?'':val)+'"></div>'; }
-  function chk(label,id,val){ return '<div class="field"><span class="sw"><input type="checkbox" id="'+id+'" '+
-    (val?'checked':'')+'> '+label+'</span></div>'; }
   return '<div class="row two">'+
    '<div class="card"><h2>Monitoring</h2>'+
      fld('Site name','site',s.site_name)+
@@ -1011,6 +1160,25 @@ function viewSettings(){
      'needs the device on this list, inside the window, under the hourly limit. Every '+
      'attempt is written to Events.</div>'+
    '</div>'+
+   '<div class="card"><h2>Quiet hours and dependencies</h2>'+
+     '<div class="field"><label>Maintenance windows - one per line: match | from | to | reason'+
+     '</label><textarea id="mtwin" rows="3" style="width:100%;background:#0f151c;border:1px solid '+
+     '#243040;border-radius:6px;color:#e8eef5;padding:8px;font:12px ui-monospace,monospace">'+
+     esc(((s.maintenance||[]).map(function(w){return [w.match||'',w.from||'',w.to||'',w.reason||''].
+       join(' | ');}).join('\n')))+'</textarea></div>'+
+     '<div class="small muted">match is a device IP or a sensor name; dates are '+
+     'YYYY-MM-DD HH:MM. Inside a window nothing alerts for that device.</div>'+
+     '<div class="field" style="margin-top:10px"><label>Dependencies - one per line: child_ip = '+
+     'parent_ip</label><textarea id="deps" rows="3" style="width:100%;background:#0f151c;'+
+     'border:1px solid #243040;border-radius:6px;color:#e8eef5;padding:8px;'+
+     'font:12px ui-monospace,monospace">'+
+     esc(Object.keys(s.dependencies||{}).map(function(k){return k+' = '+s.dependencies[k];}).
+       join('\n'))+'</textarea></div>'+
+     '<div class="small muted">When the parent is down, the child does not raise its own '+
+     'incident - one alert instead of a cascade.</div>'+
+     '<button class="sm" style="margin-top:8px" onclick="saveQuiet()">Save</button> '+
+     '<span id="qmsg" class="small muted"></span>'+
+   '</div>'+
    '<div class="card" style="margin-top:14px"><h2>Secrets at rest</h2>'+
      '<div class="small muted" id="vaultstate">checking&hellip;</div>'+
    '</div>'+
@@ -1063,9 +1231,21 @@ function viewSettings(){
    '<div class="card" style="margin-top:14px"><h2>Fleet update</h2>'+
      '<div class="small muted" style="margin-bottom:8px">Type a version and every branch that is '+
      'older installs the newest signed release on its next report, even where automatic installs '+
-     'are off. Branches only accept releases signed with the NetSentinel key, so this console '+
+     'are off. Branches only accept releases signed with the Prahari key, so this console '+
      'decides when, never what. Leave empty to let each site follow its own update setting.</div>'+
      fld('Roll the fleet out to version','upver',(s.fleet_update||{}).version)+
+     '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #243040">'+
+     '<div class="small" style="margin-bottom:6px"><b>Serve the update from this head office</b> - for hotels '+
+     'that cannot reach GitHub. This PC fetches the newest signed release (or reads it from a folder), '+
+     'checks the signature and every checksum, and serves that exact copy to the branches. Each branch '+
+     'checks the signature again before installing, so nothing unsigned can be pushed from here.</div>'+
+     fld('Release folder (optional - leave empty to fetch from GitHub)','pubdir','')+
+     '<button class="sm primary" onclick="publishFleet()">Publish to branches</button> '+
+     '<span id="pubmsg" class="small muted"></span>'+
+     ((S.data.mirror||{}).version?'<div class="small muted" style="margin-top:6px">Serving '+
+       esc(S.data.mirror.version)+' since '+new Date(S.data.mirror.published*1000).toLocaleString()+
+       ' ('+Math.round((S.data.mirror.bytes||0)/1048576)+' MB, from '+esc(S.data.mirror.source)+')</div>':'')+
+     '</div>'+
    '</div>'+
    '<div class="card"><h2>Phone alerts (ntfy)</h2>'+
      chk('Send incidents to my phone','pnben',(s.push||{}).enabled)+
@@ -1251,7 +1431,7 @@ function updateCard(cfg){
   var state={idle:'waiting for the first check',checking:'checking ...',up_to_date:'up to date',
     available:'version '+esc(u.latest)+' is available',updating:'downloading and installing '+esc(u.latest)+' ...',
     restarting:'restarting into '+esc(u.latest)+' ...',error:'last check failed'}[u.status]||esc(u.status||'');
-  var how={exe:'NetSentinel.exe replaces itself and restarts',
+  var how={exe:'Prahari.exe replaces itself and restarts',
     source:'the app files are replaced (with a backup) and it restarts',
     notify:'this copy (.pyz / Mac app) only tells you - download the new version yourself'}[u.mode]||'';
   return '<div class="card" style="margin-top:14px"><h2>Updates</h2>'+
@@ -1264,7 +1444,7 @@ function updateCard(cfg){
     (u.can_install===false?'':'<div class="field"><span class="sw"><input type="checkbox" id="upauto" '+
       (cfg.auto_install!==false?'checked':'')+'> Install them automatically</span></div>')+
     '<div class="small muted" style="margin-bottom:10px">Last check: '+esc(when)+'. '+esc(how)+
-      '. Only releases signed with the NetSentinel key are installed; if a new version does not start, '+
+      '. Only releases signed with the Prahari key are installed; if a new version does not start, '+
       'the previous one is put back.</div>'+
     '<div style="display:flex;gap:8px;align-items:center">'+
       '<button class="sm" onclick="updateAction(\'check\')">Check now</button>'+
@@ -1274,7 +1454,7 @@ function updateCard(cfg){
 }
 function updateNow(){
   var u=(S.data||{}).update||{};
-  if(!confirm('Install NetSentinel '+u.latest+' now?\n\nIt is signed and checked before installing. '+
+  if(!confirm('Install Prahari '+u.latest+' now?\n\nIt is signed and checked before installing. '+
     'The console restarts and is back in about a minute; if the new version does not start, the current '+
     'one is put back automatically.')) return;
   api('/api/update/install',{method:'POST',body:'{}'}).then(function(r){
@@ -1484,8 +1664,10 @@ function openDev(ip){
       esc(d.type_label)+'</span> '+esc(d.confidence||'')+'</span></div>'+
     kv('Status',stDot(d.state)+esc(d.state||'unknown'))+
     kv('Latency',ms(d.latency_ms))+kv('Packet loss',Math.round(d.loss_pct||0)+'%')+
-    kv('MAC',esc(d.mac||'&mdash;'))+kv('Vendor',esc(d.vendor||'&mdash;'))+
-    kv('Host name',esc(d.hostname||'&mdash;'))+kv('Last seen',esc(d.last_seen||'&mdash;'))+
+    kv('MAC',d.mac?esc(d.mac):'&mdash;')+kv('Vendor',d.vendor?esc(d.vendor):'&mdash;')+
+    kv('Host name',d.hostname?esc(d.hostname):'&mdash;')+
+    kv('Last seen',(d.last_seen==null||d.last_seen==='')? '&mdash;' :
+       (typeof d.last_seen==='number'? ago(d.last_seen) : esc(d.last_seen)))+
     (d.snmp_descr?kv('SNMP',esc(d.snmp_descr)):'')+
     '<div style="margin:12px 0 4px" class="small muted">WHY THIS TYPE</div>'+
     '<ul class="ev">'+((d.evidence||[]).map(function(e){return '<li>'+esc(e)+'</li>';}).join('')||'<li>no evidence</li>')+'</ul>'+
@@ -1511,7 +1693,7 @@ function openInc(id){
     '<div class="kv"><span class="muted">Severity</span><span><span class="badge sev-'+esc(i.severity)+'">'+
       esc(i.severity)+'</span> '+esc(i.state)+'</span></div>'+
     kv('Device',esc(i.device_name||'')+' <span class="mono muted">'+esc(i.device_ip||'')+'</span>')+
-    kv('Opened',esc(i.opened_human||''))+kv('Category',esc(g.category_label||'&mdash;'))+
+    kv('Opened',esc(i.opened_human||''))+kv('Category',(g.category_label?esc(g.category_label):'&mdash;'))+
     kv('Confidence',(g.confidence||0)+'%')+kv('Engine',esc(g.engine||'rules'))+
     '<div style="margin:14px 0 4px" class="small muted">ROOT CAUSE</div>'+
     '<div style="font-size:13px">'+esc(g.root_cause||'n/a')+'</div>'+
@@ -1542,19 +1724,26 @@ function render(){
   if(!S.data) return;
   nav(); head();
   var v={overview:viewOverview,devices:viewDevices,incidents:viewIncidents,
-         topology:viewTopology,exposure:viewExposure,traffic:viewTraffic,
+         topology:viewTopology,sensors:viewSensors,map:viewMap,exposure:viewExposure,traffic:viewTraffic,
          reports:viewReports,locations:viewLocations,users:viewUsers,events:viewEvents,
          settings:viewSettings}[S.tab]||viewOverview;
-  document.getElementById('view').innerHTML=v();
+  try{ document.getElementById('view').innerHTML=v(); }
+  catch(e){ document.getElementById('view').innerHTML='<div class="card"><h2>This view could not be '+
+    'drawn</h2><div class="small mono">'+esc(e&&e.message||String(e))+'</div>'+
+    '<div class="small muted" style="margin-top:8px">The rest of the console still works; '+
+    'reload, and if it persists send this message with the version.</div></div>'; }
 }
 function poll(){
   return api('/api/state').then(function(d){ S.data=d; render(); }).catch(function(){});
 }
-window.addEventListener('hashchange',function(){
-  S.tab=(location.hash||'#overview').slice(1); render();
-});
+function applyHash(){
+  var h=(location.hash||'').slice(1);
+  if(h.indexOf('device=')===0){ try{ openDev(decodeURIComponent(h.slice(7))); }catch(e){} return; }
+  S.tab=h||'overview'; render();
+}
+window.addEventListener('hashchange',applyHash);
 document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeDrawer(); });
-poll(); setInterval(poll,3000);
+poll().then(applyHash); setInterval(poll,3000);
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }
 """
 
@@ -1609,11 +1798,11 @@ a.sso:hover{border-color:#3d6a94;background:#20313f}
 
 LOGIN_HTML = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>NetSentinel - sign in</title><style>__CSS____LOGIN_CSS__</style></head><body>
+<title>Prahari - sign in</title><style>__CSS____LOGIN_CSS__</style></head><body>
 <div class="login-wrap"><div class="login" id="card">
   <div class="login-left">
-    <div class="lg"><div class="logo">NS</div>
-      <div><div style="font-weight:600;font-size:14px">NetSentinel</div>
+    <div class="lg"><div class="logo">प्र</div>
+      <div><div style="font-weight:600;font-size:14px">Prahari &middot; <span style="color:#7fd6a0">प्रहरी</span></div>
       <div style="font-size:11px;color:#8fa6b6">v__VERSION__ network operations console</div></div></div>
     <h1>Your network, watched.</h1>
     <p class="tag">Devices, incidents and internet usage for this site — running on this PC.</p>
@@ -1711,21 +1900,21 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.28.0"))
+            .replace("__VERSION__", "1.31.0"))
 
 
 def app_page(version):
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NetSentinel {version}</title>
+<title>Prahari {version}</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#17603a">
 <link rel="apple-touch-icon" href="/static/icon-192.png">
 <style>{CSS}</style></head>
 <body><div class="app">
   <aside class="side">
-    <div class="brand"><div class="logo">NS</div><div><div class="t">NetSentinel</div>
+    <div class="brand"><div class="logo">प्र</div><div><div class="t">Prahari <span style="color:#7fd6a0;font-weight:500">प्रहरी</span></div>
       <div class="s">v{version}</div></div></div>
     <nav id="nav"></nav>
     <div class="side-foot">v{version} console<br><span id="foot-src" class="muted">starting&hellip;</span></div>
@@ -1747,7 +1936,7 @@ def app_page(version):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "NetSentinel"
+    server_version = "Prahari"
     scanner = None
     version = "1.5.0"
     auth_enabled = False
@@ -1844,6 +2033,19 @@ class Handler(BaseHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         path = parsed.path
+        if path.startswith("/fleet/update/"):
+            # the hub's mirror of a signed release - branches only, by branch token
+            from . import mirror, sites as sites_mod
+            token = self.headers.get("X-Branch-Token") or ""
+            if not sites_mod.site_for_token(settings.load(), token):
+                return self._send(403, b"branch token required", "text/plain")
+            fp = mirror.file_for(path[len("/fleet/update/"):])
+            if not fp:
+                return self._send(404, b"not published", "text/plain")
+            with open(fp, "rb") as fh:
+                data = fh.read()
+            ctype = "application/json" if fp.endswith(".json") else "application/octet-stream"
+            return self._send(200, data, ctype)
         if path in ("/", "/index.html"):
             if self.auth_enabled and not auth.session(self._cookie()):
                 return self._send(302, b"", "text/plain", {"Location": "/login"})
@@ -1912,8 +2114,9 @@ class Handler(BaseHTTPRequestHandler):
             data["settings"] = _mask_branch(data.get("settings") or {})
             upd = getattr(self.scanner, "updater", None)
             data["update"] = upd.snapshot() if upd else None
-            from . import ai as ai_mod
+            from . import ai as ai_mod, mirror as mirror_mod
             data["ai"] = ai_mod.get().status()
+            data["mirror"] = mirror_mod.status()
             role = user.get("role") or "viewer"
             scoped = [x for x in (user.get("sites") or []) if x]
             if scoped and role != "admin":
@@ -1969,6 +2172,18 @@ class Handler(BaseHTTPRequestHandler):
                 devices = list(self.scanner.devices.values())
             from . import ports as ports_mod
             return self._json(ports_mod.exposure(devices))
+        if path == "/api/sensor/history":
+            user = self._user()
+            if user is None:
+                self._send(401, "sign in required", "text/plain")
+                return
+            q = parse_qs(parsed.query)
+            sid = (q.get("id") or [""])[0]
+            try:
+                hours = max(1, min(24 * 31, int((q.get("hours") or ["24"])[0] or 24)))
+            except ValueError:
+                hours = 24
+            return self._json(store.sensor_summary(sid, hours))
         if path == "/api/sla.pdf":
             user = self._user()
             if user is None:
@@ -1977,7 +2192,7 @@ class Handler(BaseHTTPRequestHandler):
             from . import sla as sla_mod
             month = (parse_qs(parsed.query).get("month") or [""])[0]
             try:
-                out = os.path.join(tempfile.gettempdir(), "netsentinel-sla")
+                out = os.path.join(tempfile.gettempdir(), "prahari-sla")
                 file_path = sla_mod.render(month or None, out_dir=out)
                 with open(file_path, "rb") as fh:
                     data = fh.read()
@@ -2027,19 +2242,19 @@ class Handler(BaseHTTPRequestHandler):
                 hours = 24
             return self._send(200, _reports_csv(self.scanner.reports(hours)),
                               "text/csv; charset=utf-8",
-                              {"Content-Disposition": 'attachment; filename="netsentinel-availability.csv"'})
+                              {"Content-Disposition": 'attachment; filename="prahari-availability.csv"'})
         if path == "/api/export.csv":
             if self._guard() is None:
                 return
             return self._send(200, _csv(self.scanner),
                               "text/csv; charset=utf-8",
-                              {"Content-Disposition": 'attachment; filename="netsentinel-devices.csv"'})
+                              {"Content-Disposition": 'attachment; filename="prahari-devices.csv"'})
         if path == "/api/report.txt":
             if self._guard() is None:
                 return
             from .report import text_report
             return self._send(200, text_report(self.scanner.snapshot()), "text/plain; charset=utf-8",
-                              {"Content-Disposition": 'attachment; filename="netsentinel-report.txt"'})
+                              {"Content-Disposition": 'attachment; filename="prahari-report.txt"'})
         if path == "/favicon.ico":
             return self._send(204, b"", "image/x-icon")
         return self._json({"error": "not found"}, 404)
@@ -2158,7 +2373,7 @@ class Handler(BaseHTTPRequestHandler):
                                                               "not an administrator of this PC")
                             return self._send(403, login_page(
                                 "Only administrators of this PC can sign in with Windows. Ask an "
-                                "administrator to add you as a NetSentinel user."), "text/html; charset=utf-8")
+                                "administrator to add you as a Prahari user."), "text/html; charset=utf-8")
                         auth.clear_failures(self.client_ip)
                         token = auth.login_sso(display, role, self.session_hours, provider="windows")
                         store.add_event("auth", "info", f"Windows sign-in: {display} as {role}")
@@ -2194,7 +2409,7 @@ class Handler(BaseHTTPRequestHandler):
                                f"ns_session={token}; Path=/; HttpOnly; SameSite=Strict"
                                + ("; Secure" if self.tls_active else "")})
         if path == "/api/login":
-            # JSON sign-in for scripts: NetSentinel accounts only (Windows sign-in uses the form)
+            # JSON sign-in for scripts: Prahari accounts only (Windows sign-in uses the form)
             token, err = auth.login(self.client_ip, payload.get("username", ""),
                                     payload.get("password", ""), self.session_hours)
             if not token:
@@ -2287,12 +2502,94 @@ class Handler(BaseHTTPRequestHandler):
                 return
             from . import sla as sla_mod
             try:
-                out_dir = os.path.join(tempfile.gettempdir(), "netsentinel-fleet")
+                out_dir = os.path.join(tempfile.gettempdir(), "prahari-fleet")
                 files = sla_mod.fleet(out_dir=out_dir)
                 return self._json({"ok": bool(files), "count": len(files), "dir": out_dir,
                                    "message": "" if files else "no hotel has sent a summary yet"})
             except Exception as exc:
                 return self._json({"ok": False, "message": str(exc)[:160]})
+        if path == "/api/sensors/save":
+            if not self._need("settings", user):
+                return
+            sensor = payload.get("sensor") or {}
+            from . import sensors as _sensors
+            if (sensor.get("type") or "ping") not in _sensors.KINDS:
+                return self._json({"ok": False, "message": "unknown sensor type"})
+            if not sensor.get("target"):
+                return self._json({"ok": False, "message": "a target is required"})
+            cfg = settings.load()
+            current = [x for x in (cfg.get("sensors") or []) if isinstance(x, dict)]
+            from . import sensors as sensors_mod
+            sensor["id"] = sensor.get("id") or sensors_mod.sensor_id(sensor)
+            current = [x for x in current if x.get("id") != sensor["id"]]
+            current.append(sensor)
+            settings.save({"sensors": current})
+            return self._json({"ok": True, "id": sensor["id"]})
+        if path == "/api/sensors/delete":
+            if not self._need("settings", user):
+                return
+            cfg = settings.load()
+            keep = [x for x in (cfg.get("sensors") or [])
+                    if isinstance(x, dict) and x.get("id") != payload.get("id")]
+            settings.save({"sensors": keep})
+            return self._json({"ok": True, "removed": payload.get("id")})
+        if path == "/api/fleet/publish":
+            if not self._need("settings", user):
+                return
+            from . import mirror
+            result = mirror.publish((payload.get("folder") or "").strip())
+            self.scanner.audit(who, "fleet update published" if result.get("ok") else "fleet publish refused",
+                               result.get("message", "")[:100])
+            return self._json(result)
+        if path == "/api/quiet/save":
+            if not self._need("settings", user):
+                return
+            import datetime as _dt
+            import ipaddress as _ip
+            patch, problems = {}, []
+            if "dependencies" in payload:
+                deps = {}
+                for n, line in enumerate((payload.get("dependencies") or "").splitlines(), 1):
+                    if not line.strip():
+                        continue
+                    child, _, parent = line.partition("=")
+                    child, parent = child.strip(), parent.strip()
+                    try:
+                        _ip.ip_address(child)
+                        _ip.ip_address(parent)
+                    except ValueError:
+                        problems.append(f"dependency line {n}: write it as child_ip = parent_ip")
+                        continue
+                    deps[child] = parent
+                patch["dependencies"] = deps
+            if "maintenance" in payload:
+                windows = []
+                for n, line in enumerate((payload.get("maintenance") or "").splitlines(), 1):
+                    if not line.strip():
+                        continue
+                    parts = [p.strip() for p in line.split("|")]
+                    try:
+                        if len(parts) < 3:
+                            raise ValueError
+                        start = _dt.datetime.strptime(parts[1], "%Y-%m-%d %H:%M")
+                        end = _dt.datetime.strptime(parts[2], "%Y-%m-%d %H:%M")
+                        if end <= start:
+                            raise ValueError
+                    except ValueError:
+                        problems.append(f"window line {n}: use match | YYYY-MM-DD HH:MM | "
+                                        "YYYY-MM-DD HH:MM | reason, with the end after the start")
+                        continue
+                    windows.append({"match": parts[0], "from": parts[1], "to": parts[2],
+                                    "reason": parts[3] if len(parts) > 3 and parts[3] else "maintenance"})
+                patch["maintenance"] = windows
+            if problems:
+                return self._json({"ok": False, "message": "; ".join(problems)})
+            if "dependencies" in patch:
+                settings.save({"dependencies": None})      # replace, not merge: removed lines must go
+            if patch:
+                settings.save(patch)
+                self.scanner.audit(who, "quiet hours / dependencies changed")
+            return self._json({"ok": True})
         if path == "/api/defaults/check":
             if not self._need("settings", user):
                 return
@@ -2317,13 +2614,13 @@ class Handler(BaseHTTPRequestHandler):
             if not (tg.get("enabled") and tg.get("token") and chats):
                 return self._json({"ok": False, "message": "enable it, add the token and a chat id"})
             ok, msg = tg_mod.send(tg["token"], chats[0],
-                                  "NetSentinel test message - the bot is wired up.")
+                                  "Prahari test message - the bot is wired up.")
             return self._json({"ok": ok, "message": msg})
         if path == "/api/push/test":
             if not self._need("settings", user):
                 return
             from . import push as push_mod
-            ok, msg = push_mod.send(settings.load(), "Test from NetSentinel",
+            ok, msg = push_mod.send(settings.load(), "Test from Prahari",
                                     "Phone alerts are working.", "info")
             return self._json({"ok": ok, "message": msg})
         if path == "/api/ai/ask":
@@ -2572,7 +2869,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.28.0", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.31.0", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

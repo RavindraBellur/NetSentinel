@@ -1,27 +1,27 @@
 @echo off
 rem ===========================================================================
-rem  NetSentinel bootstrap - installs everything, then starts the app.
+rem  Prahari bootstrap - installs everything, then starts the app.
 rem
-rem  Called by NetSentinel-Setup.exe (the single-file installer) or run by hand.
+rem  Called by Prahari-Setup.exe (the single-file installer) or run by hand.
 rem  It will, in order:
-rem     1. copy the app to %LOCALAPPDATA%\NetSentinel  (or update it in place)
+rem     1. copy the app to %LOCALAPPDATA%\Prahari  (or update it in place)
 rem     2. find Python 3.9+ - if it is missing, download and install it silently
 rem     3. create a private environment and install the two optional extras
 rem     4. add a desktop shortcut, a Start-menu entry and an uninstaller
 rem     5. open the firewall for the dashboard (when running as Administrator)
-rem     6. start NetSentinel
+rem     6. start Prahari
 rem
 rem  Options:  /autostart   also start at every login (needs Administrator)
 rem            /no-run      install only
 rem            /allusers    install under ProgramData (needs Administrator)
 rem ===========================================================================
 setlocal EnableDelayedExpansion
-title NetSentinel - setup
+title Prahari - setup
 
 set "SRC=%~dp0"
 set "SRC=%SRC:~0,-1%"
-set "TARGET=%LOCALAPPDATA%\NetSentinel"
-set "LOG=%TEMP%\netsentinel-setup.log"
+set "TARGET=%LOCALAPPDATA%\Prahari"
+set "LOG=%TEMP%\prahari-setup.log"
 set "PYVER=3.12.9"
 set "PYURL=https://www.python.org/ftp/python/%PYVER%/python-%PYVER%-amd64.exe"
 set "AUTOSTART="
@@ -30,11 +30,21 @@ set "NORUN="
 for %%A in (%*) do (
   if /I "%%A"=="/autostart" set "AUTOSTART=1"
   if /I "%%A"=="/no-run" set "NORUN=1"
-  if /I "%%A"=="/allusers" set "TARGET=%ProgramData%\NetSentinel"
+  if /I "%%A"=="/allusers" set "TARGET=%ProgramData%\Prahari"
 )
 
+rem ---- upgrading from NetSentinel (the old name): update that folder in place, never install twice
+set "OLDNAME="
+if exist "%LOCALAPPDATA%\NetSentinel\netsentinel.py" (set "TARGET=%LOCALAPPDATA%\NetSentinel" & set "OLDNAME=1")
+if exist "%ProgramData%\NetSentinel\netsentinel.py" (set "TARGET=%ProgramData%\NetSentinel" & set "OLDNAME=1")
+schtasks /Delete /TN "NetSentinel" /F >nul 2>&1
+netsh advfirewall firewall delete rule name="NetSentinel Dashboard" >nul 2>&1
+netsh advfirewall firewall delete rule name="NetSentinel Flow Syslog" >nul 2>&1
+del "%USERPROFILE%\Desktop\NetSentinel.lnk" >nul 2>&1
+if defined OLDNAME echo   Found an existing NetSentinel install - upgrading it in place as Prahari.
+
 echo ============================================================
-echo   NetSentinel setup
+echo   Prahari setup
 echo ============================================================
 echo.
 
@@ -43,11 +53,11 @@ set "ELEVATED="
 net session >nul 2>&1 && set "ELEVATED=1"
 
 rem ---- 1. copy the app -------------------------------------------------
-if exist "%SRC%\NetSentinel-app.zip" (
+if exist "%SRC%\Prahari-app.zip" (
   echo   [1/6] Unpacking the application to "%TARGET%" ...
   if not exist "%TARGET%" mkdir "%TARGET%" >nul 2>&1
   powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "try { Expand-Archive -LiteralPath '%SRC%\NetSentinel-app.zip' -DestinationPath '%TARGET%' -Force; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
+    "try { Expand-Archive -LiteralPath '%SRC%\Prahari-app.zip' -DestinationPath '%TARGET%' -Force; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
   if errorlevel 1 (
     echo   Could not unpack the archive. Aborting.
     pause
@@ -67,7 +77,7 @@ if not exist "netsentinel.py" (
   pause
   exit /b 1
 )
-echo   NetSentinel files are in "%TARGET%"
+echo   Prahari files are in "%TARGET%"
 echo.
 
 rem ---- 2. Python -------------------------------------------------------
@@ -99,7 +109,7 @@ set "PATH=%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Programs\Pytho
 call :findpython
 if not defined PY (
   echo   Python was installed but is not visible yet. Close this window and run
-  echo   NetSentinel from the desktop shortcut - it will finish the setup.
+  echo   Prahari from the desktop shortcut - it will finish the setup.
   pause
   exit /b 1
 )
@@ -122,7 +132,7 @@ if not exist ".venv\Scripts\python.exe" (
 ".venv\Scripts\python.exe" -m pip install --upgrade pip --quiet --disable-pip-version-check >>"%LOG%" 2>&1
 ".venv\Scripts\python.exe" -m pip install -r requirements.txt --quiet --disable-pip-version-check >>"%LOG%" 2>&1
 if errorlevel 1 (
-  echo   Optional extras could not be installed - NetSentinel runs without them.
+  echo   Optional extras could not be installed - Prahari runs without them.
 ) else (
   echo   Optional extras installed ^(traffic capture, NIC rates^).
 )
@@ -143,28 +153,28 @@ if not "%~1"=="" (
 
 rem ---- 4. shortcuts + uninstaller --------------------------------------
 echo   [4/6] Creating shortcuts ...
-set "LNK=%USERPROFILE%\Desktop\NetSentinel.lnk"
+set "LNK=%USERPROFILE%\Desktop\Prahari.lnk"
 set "STARTMENU=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$w=New-Object -ComObject WScript.Shell;" ^
-  "$s=$w.CreateShortcut('%LNK%');$s.TargetPath='%TARGET%\run.bat';$s.WorkingDirectory='%TARGET%';$s.IconLocation='%TARGET%\netsentinel.ico';$s.Description='NetSentinel network console';$s.Save();" ^
-  "$m=$w.CreateShortcut('%STARTMENU%\NetSentinel.lnk');$m.TargetPath='%TARGET%\run.bat';$m.WorkingDirectory='%TARGET%';$m.IconLocation='%TARGET%\netsentinel.ico';$m.Save()" >nul 2>&1
+  "$s=$w.CreateShortcut('%LNK%');$s.TargetPath='%TARGET%\run.bat';$s.WorkingDirectory='%TARGET%';$s.IconLocation='%TARGET%\netsentinel.ico';$s.Description='Prahari network console';$s.Save();" ^
+  "$m=$w.CreateShortcut('%STARTMENU%\Prahari.lnk');$m.TargetPath='%TARGET%\run.bat';$m.WorkingDirectory='%TARGET%';$m.IconLocation='%TARGET%\netsentinel.ico';$m.Save()" >nul 2>&1
 echo   Desktop and Start-menu shortcuts created.
 echo.
 
 rem ---- 5. firewall + optional autostart --------------------------------
 echo   [5/6] Network access ...
 if defined ELEVATED (
-  netsh advfirewall firewall delete rule name="NetSentinel Dashboard" >nul 2>&1
-  netsh advfirewall firewall add rule name="NetSentinel Dashboard" dir=in action=allow ^
-    protocol=TCP localport=8777-8788 profile=private,domain description="NetSentinel dashboard" >nul 2>&1
-  netsh advfirewall firewall delete rule name="NetSentinel Flow Syslog" >nul 2>&1
-  netsh advfirewall firewall add rule name="NetSentinel Flow Syslog" dir=in action=allow ^
-    protocol=UDP localport=2055,6343,5514 profile=private,domain description="NetSentinel flow and syslog" >nul 2>&1
+  netsh advfirewall firewall delete rule name="Prahari Dashboard" >nul 2>&1
+  netsh advfirewall firewall add rule name="Prahari Dashboard" dir=in action=allow ^
+    protocol=TCP localport=8777-8788 profile=private,domain description="Prahari dashboard" >nul 2>&1
+  netsh advfirewall firewall delete rule name="Prahari Flow Syslog" >nul 2>&1
+  netsh advfirewall firewall add rule name="Prahari Flow Syslog" dir=in action=allow ^
+    protocol=UDP localport=2055,6343,5514 profile=private,domain description="Prahari flow and syslog" >nul 2>&1
   echo   Firewall opened for the dashboard ^(8777-8788^) and flow/syslog ^(2055, 6343, 5514^).
   if defined AUTOSTART (
-    schtasks /Create /TN "NetSentinel" /TR "\"%TARGET%\run.bat\"" /SC ONLOGON /RL HIGHEST /F >nul 2>&1
-    if not errorlevel 1 echo   NetSentinel will start at every login.
+    schtasks /Create /TN "Prahari" /TR "\"%TARGET%\run.bat\"" /SC ONLOGON /RL HIGHEST /F >nul 2>&1
+    if not errorlevel 1 echo   Prahari will start at every login.
   )
 ) else (
   echo   Not running as Administrator - skipped the firewall rule and autostart.
@@ -173,7 +183,7 @@ if defined ELEVATED (
 echo.
 
 rem ---- 6. run ----------------------------------------------------------
-echo   [6/6] Starting NetSentinel ...
+echo   [6/6] Starting Prahari ...
 echo.
 if defined NORUN (
   echo   Installed. Start it from the desktop shortcut.

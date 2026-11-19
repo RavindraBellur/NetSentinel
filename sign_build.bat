@@ -11,12 +11,12 @@ rem    set PFX=C:\certs\netsentinel.pfx
 rem    set PFX_PASSWORD=yourpassword
 rem    sign_build.bat
 rem
-rem  Signs: dist\NetSentinel.exe and dist\NetSentinel-Setup-*.exe
+rem  Signs: dist\Prahari.exe and dist\Prahari-Setup-*.exe
 rem  Timestamping keeps the signature valid after the certificate expires.
 rem ===========================================================================
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
-title NetSentinel - sign build
+title Prahari - sign build
 
 if "%PFX%"=="" (
   echo   Set PFX to the path of your .pfx code-signing certificate first, e.g.

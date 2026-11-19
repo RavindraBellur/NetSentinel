@@ -61,6 +61,10 @@ CREATE TABLE IF NOT EXISTS host_samples (
     ts INTEGER, ip TEXT, cpu_pct REAL, mem_pct REAL, disk_pct REAL
 );
 CREATE INDEX IF NOT EXISTS idx_hostsamples ON host_samples (ip, ts);
+CREATE TABLE IF NOT EXISTS sensor_samples (
+    id TEXT, ts INTEGER, state TEXT, value REAL
+);
+CREATE INDEX IF NOT EXISTS idx_sensor_ts ON sensor_samples (id, ts);
 CREATE TABLE IF NOT EXISTS branches (
     name TEXT PRIMARY KEY, last_ts INTEGER, payload TEXT
 );
@@ -395,6 +399,35 @@ def hosts():
                 "payload": _unjson(r["payload"]) or {}}
         out.append(item)
     return out
+
+
+# --------------------------------------------------------- sensor samples ----
+
+def add_sensor_sample(sensor_id, state, value=None):
+    return _exec("INSERT INTO sensor_samples (id, ts, state, value) VALUES (?,?,?,?)",
+                 (sensor_id, _now_ts(), state, value)) is not False
+
+
+def sensor_history(sensor_id, hours=24):
+    cutoff = _now_ts() - int(hours * 3600)
+    rows = _exec("SELECT ts, state, value FROM sensor_samples WHERE id=? AND ts>=?"
+                 " ORDER BY ts", (sensor_id, cutoff), fetch=True)
+    return [dict(r) for r in rows or []]
+
+
+def sensor_summary(sensor_id, hours=24):
+    """Availability and response trend for one sensor over a window."""
+    rows = sensor_history(sensor_id, hours)
+    if not rows:
+        return {"points": [], "up_pct": None, "count": 0}
+    up = sum(1 for r in rows if r["state"] == "up")
+    return {"points": [{"ts": r["ts"], "state": r["state"], "value": r["value"]} for r in rows],
+            "up_pct": round(100.0 * up / len(rows), 2), "count": len(rows)}
+
+
+def prune_sensor_samples(days=30):
+    cutoff = _now_ts() - int(days * 86400)
+    return _exec("DELETE FROM sensor_samples WHERE ts<?", (cutoff,)) is not False
 
 
 # ----------------------------------------------------------- host samples ----

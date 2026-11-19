@@ -1,7 +1,7 @@
 """Dead-man's switch: prove to an outside service that this site is alive.
 
 A console inside the hotel cannot tell you the hotel's internet died - it has no path
-out. So every few minutes NetSentinel pings a URL on the internet (healthchecks.io,
+out. So every few minutes Prahari pings a URL on the internet (healthchecks.io,
 UptimeRobot push, your own endpoint). When the pings stop, that service emails you.
 
     heartbeat.url = https://hc-ping.com/<uuid>          (one UUID per site)
@@ -33,7 +33,7 @@ def provision(api_key, names, timeout=900, grace=300, base=HC_API):
     import json as _json
     made = {}
     for name in names:
-        body = _json.dumps({"name": name, "tags": "netsentinel", "timeout": timeout,
+        body = _json.dumps({"name": name, "tags": "prahari", "timeout": timeout,
                             "grace": grace, "channels": "*"}).encode()
         req = urllib.request.Request(base + "/checks/", data=body, method="POST",
                                      headers={"X-Api-Key": api_key,
@@ -85,7 +85,7 @@ class Heartbeat(threading.Thread):
             self.state.update(enabled=True, last_error="no heartbeat URL configured")
             return False
         self.state.update(enabled=True, url=url.split("?")[0])
-        req = urllib.request.Request(url, headers={"User-Agent": "NetSentinel-heartbeat/1.9"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Prahari-heartbeat/1.9"})
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 ok = 200 <= resp.status < 400

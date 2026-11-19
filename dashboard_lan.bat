@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title NetSentinel - dashboard (LAN)
+title Prahari - dashboard (LAN)
 
 if not exist ".venv\Scripts\python.exe" (
   echo   First run - setting things up, please wait ...
@@ -10,7 +10,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 echo ============================================================
-echo   NetSentinel dashboard, shared on this network
+echo   Prahari dashboard, shared on this network
 echo.
 echo   It scans this network, then opens the dashboard here and
 echo   prints the address your laptop / phone can open.
@@ -23,5 +23,5 @@ echo.
 ".venv\Scripts\python.exe" netsentinel.py --lan %*
 
 echo.
-echo   NetSentinel stopped.
+echo   Prahari stopped.
 pause

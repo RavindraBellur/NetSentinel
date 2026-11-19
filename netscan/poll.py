@@ -158,6 +158,10 @@ class Poller(threading.Thread):
                 self.scanner.refresh_topology()
             except Exception:
                 pass
+            try:
+                self.scanner.run_sensors()
+            except Exception:
+                pass
         self.polls += 1
         self.last_poll_ts = now
         states = {}
@@ -257,7 +261,32 @@ class Poller(threading.Thread):
 
     def _incident_machine(self, key, dev, state, latency, loss, siblings, internet, th,
                           cfg, gateway=None):
-        st = self.device_state.setdefault(key, {"bad": 0, "good": 0, "incident": None, "sev": ""})
+        st = self.device_state.setdefault(key, {"bad": 0, "good": 0, "incident": None,
+                                                "sev": "", "state": ""})
+        # a device behind a dead parent is not its own incident
+        try:
+            from . import sensors as sensors_mod
+            parent_down, why = sensors_mod.parent_down(cfg, dev.get("ip") or "", self.device_state)
+            if parent_down and state in ("down", "degraded"):
+                if st.get("suppressed") != why:
+                    st["suppressed"] = why
+                    store.add_event("dependency", "info",
+                                    f"{dev.get('label') or dev.get('ip')}: alert suppressed, {why}")
+                st["state"] = state           # so devices behind THIS one are suppressed too
+                return
+            quiet, reason = sensors_mod.in_maintenance(cfg, ip=dev.get("ip") or "")
+            if quiet and state in ("down", "degraded"):
+                if st.get("suppressed") != reason:
+                    st["suppressed"] = reason
+                    store.add_event("maintenance", "info",
+                                    f"{dev.get('label') or dev.get('ip')}: {state} during quiet hours "
+                                    f"({reason}) - no alert")
+                st["state"] = state
+                return
+            st["suppressed"] = ""
+        except Exception:
+            pass
+        st["state"] = state
         bad = state in ("down", "degraded")
         if bad:
             st["bad"] += 1

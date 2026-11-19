@@ -1,6 +1,6 @@
 """Access control for an internet-facing console: trusted proxies and IP allow-lists.
 
-When NetSentinel sits behind nginx/Caddy/IIS/Cloudflare, the connection comes from the
+When Prahari sits behind nginx/Caddy/IIS/Cloudflare, the connection comes from the
 proxy, so the real client address is in `X-Forwarded-For`. Trusting that header from
 anyone would let a client spoof its address, so it is only honoured when the direct peer
 is in `access.trusted_proxies`.

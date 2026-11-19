@@ -1,10 +1,10 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title NetSentinel - firewall rule
+title Prahari - firewall rule
 
 rem Lets other devices on your network (your laptop, phone, tablet) open the
-rem NetSentinel dashboard. Run once. Administrator rights required.
+rem Prahari dashboard. Run once. Administrator rights required.
 
 net session >nul 2>&1
 if errorlevel 1 (
@@ -15,9 +15,9 @@ if errorlevel 1 (
 )
 
 echo   Adding firewall rule for the dashboard ports 8777-8788 ...
-netsh advfirewall firewall delete rule name="NetSentinel Dashboard" >nul 2>&1
-netsh advfirewall firewall add rule name="NetSentinel Dashboard" dir=in action=allow ^
-  protocol=TCP localport=8777-8788 profile=private,domain description="NetSentinel local dashboard"
+netsh advfirewall firewall delete rule name="Prahari Dashboard" >nul 2>&1
+netsh advfirewall firewall add rule name="Prahari Dashboard" dir=in action=allow ^
+  protocol=TCP localport=8777-8788 profile=private,domain description="Prahari local dashboard"
 if errorlevel 1 (
   echo   Could not add the rule.
 ) else (

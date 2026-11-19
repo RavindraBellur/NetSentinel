@@ -287,7 +287,7 @@ def http_probe(ip: str, port: int, timeout: float = 1.5):
             ctx.verify_mode = ssl.CERT_NONE
             s = ctx.wrap_socket(s, server_hostname=ip)
         req = (
-            f"GET / HTTP/1.0\r\nHost: {ip}\r\nUser-Agent: NetSentinel/1.0\r\n"
+            f"GET / HTTP/1.0\r\nHost: {ip}\r\nUser-Agent: Prahari/1.0\r\n"
             "Accept: */*\r\nConnection: close\r\n\r\n"
         )
         s.sendall(req.encode())
@@ -327,7 +327,7 @@ def rtsp_probe(ip: str, port: int = 554, timeout: float = 1.2):
     try:
         s.settimeout(timeout)
         s.connect((ip, port))
-        s.sendall(f"OPTIONS rtsp://{ip}/ RTSP/1.0\r\nCSeq: 1\r\nUser-Agent: NetSentinel\r\n\r\n".encode())
+        s.sendall(f"OPTIONS rtsp://{ip}/ RTSP/1.0\r\nCSeq: 1\r\nUser-Agent: Prahari\r\n\r\n".encode())
         text = _recv_some(s, 2048).decode("utf-8", "replace")
     except Exception:
         return {}

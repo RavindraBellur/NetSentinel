@@ -4,7 +4,7 @@ title Enable Remote Desktop on this PC
 
 rem ---------------------------------------------------------------------------
 rem  Run this ON THE PC YOU WANT TO CONTROL (not on the scanning PC), once,
-rem  as Administrator. After this, NetSentinel's "Remote Desktop (RDP)" button
+rem  as Administrator. After this, Prahari's "Remote Desktop (RDP)" button
 rem  can connect to it.
 rem
 rem  Requirements on this PC:
@@ -44,7 +44,7 @@ echo.
 echo   Done. This PC can now be controlled with Remote Desktop.
 ipconfig | findstr /i "IPv4"
 echo.
-echo   Use that address in NetSentinel's remote panel, or run:  mstsc /v:THAT-IP
+echo   Use that address in Prahari's remote panel, or run:  mstsc /v:THAT-IP
 echo.
 echo   Remember: the account needs a password, and both PCs must be on the
 echo   same network (or connected by VPN).

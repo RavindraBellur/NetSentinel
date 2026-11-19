@@ -33,10 +33,14 @@ def hub_reply(branch_version):
     from .updater import vtuple
     if vtuple(branch_version or "0") >= vtuple(target):
         return None
-    return {"version": target}
+    offer = {"version": target}
+    from . import mirror
+    if (settings.get("fleet_update") or {}).get("mirror") and mirror.status().get("version") == target:
+        offer["mirror"] = True          # this hub serves the signed release itself
+    return offer
 
 
-def pending_update(response, hub_url="", log=print):
+def pending_update(response, hub_url="", log=print, token=""):
     """Branch side: act on an `update` block in a hub reply. Returns a message or None."""
     if not isinstance(response, dict):
         return None
@@ -57,6 +61,11 @@ def pending_update(response, hub_url="", log=print):
     if _last_request["version"] == target and now - _last_request["at"] < RETRY_AFTER:
         return None
     _last_request.update(version=target, at=now)
-    log(f"hub asks for {target} - installing the newest signed release")
-    upd.check_now(install=True)
+    source = None
+    if offer.get("mirror") and hub_url and token:
+        source = {"base": hub_url.rstrip("/") + "/fleet/update", "headers": {"X-Branch-Token": token}}
+        log(f"hub asks for {target} - installing the signed release it mirrors")
+    else:
+        log(f"hub asks for {target} - installing the newest signed release")
+    upd.check_now(install=True, source=source)
     return f"installing {target}"

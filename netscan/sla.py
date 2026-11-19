@@ -151,7 +151,7 @@ def fleet(out_dir="reports", month=None):
     for branch in rows:
         data = branch.get("sla") or {}
         doc = Doc()
-        doc.text(doc.margin, doc.y - 26, "NetSentinel", 20, True, 0.16)
+        doc.text(doc.margin, doc.y - 26, "Prahari", 20, True, 0.16)
         doc.text(doc.margin, doc.y - 44, "Monthly service report", 11, False, 0.4)
         doc.y -= 60
         doc.line(doc.margin, doc.y, doc.margin + doc.width, doc.y, 0.6, 1.2)
@@ -185,7 +185,7 @@ def fleet(out_dir="reports", month=None):
                  grey=0.3)
         safe = "".join(c if c.isalnum() or c in " -_" else "-"
                        for c in (branch.get("name") or "site")).strip().replace(" ", "-")
-        path = os.path.join(out_dir, f"NetSentinel-SLA-{safe}-{label.replace(' ', '-')}.pdf")
+        path = os.path.join(out_dir, f"Prahari-SLA-{safe}-{label.replace(' ', '-')}.pdf")
         with open(path, "wb") as fh:
             fh.write(doc.build())
         written.append(path)
@@ -195,13 +195,13 @@ def fleet(out_dir="reports", month=None):
 def render(month=None, site=None, out_dir="reports"):
     """Write the PDF and return its path."""
     cfg = settings.load()
-    site = site or cfg.get("site_name") or "NetSentinel site"
+    site = site or cfg.get("site_name") or "Prahari site"
     start, end, label = month_range(month)
     data = collect(start, end)
 
     doc = Doc()
     # ---- cover block
-    doc.text(doc.margin, doc.y - 26, "NetSentinel", 22, True, 0.16)
+    doc.text(doc.margin, doc.y - 26, "Prahari", 22, True, 0.16)
     doc.text(doc.margin, doc.y - 44, "Monthly service report", 12, False, 0.4)
     doc.y -= 64
     doc.line(doc.margin, doc.y, doc.margin + doc.width, doc.y, 0.6, 1.2)
@@ -298,12 +298,12 @@ def render(month=None, site=None, out_dir="reports"):
              "retry rates come from the standard IEEE802dot11 counters on the access points.",
              9, grey=0.25)
     doc.space(10)
-    doc.text(doc.margin, doc.y - 9, "NetSentinel - LAN discovery, monitoring and multi-site network console",
+    doc.text(doc.margin, doc.y - 9, "Prahari - LAN discovery, monitoring and multi-site network console",
              8, False, 0.5)
 
     os.makedirs(out_dir, exist_ok=True)
     safe = "".join(c if c.isalnum() or c in " -_" else "-" for c in site).strip().replace(" ", "-")
-    path = os.path.join(out_dir, f"NetSentinel-SLA-{safe}-{start and datetime.datetime.fromtimestamp(start).strftime('%Y-%m')}.pdf")
+    path = os.path.join(out_dir, f"Prahari-SLA-{safe}-{start and datetime.datetime.fromtimestamp(start).strftime('%Y-%m')}.pdf")
     with open(path, "wb") as fh:
         fh.write(doc.build())
     return path

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Sign and publish a NetSentinel release so every installed copy updates itself.
+"""Sign and publish a Prahari release so every installed copy updates itself.
 
     python3 tools/sign_release.py v1.18.0
 
 Run it on the publisher's Mac after GitHub Actions has built the tag and created the DRAFT release.
-It downloads NetSentinel.exe and NetSentinel-app.zip from the draft, checks that the code inside says
+It downloads Prahari.exe and Prahari-app.zip from the draft, checks that the code inside says
 the same version as the tag, writes latest.json (manifest + Ed25519 signature), uploads it and publishes
 the release. Installed copies only ever read the newest *published* release, and install nothing whose
 signature or checksum doesn't match.
@@ -28,7 +28,7 @@ import zipfile
 
 REPO = "RavindraBellur/NetSentinel"
 KEY = os.path.expanduser("~/.config/netsentinel-release/update-signing-key.pem")
-ASSETS = {"exe": "NetSentinel.exe", "app": "NetSentinel-app.zip"}
+ASSETS = {"exe": "Prahari.exe", "app": "Prahari-app.zip"}
 
 
 def gh(*args, capture=False):

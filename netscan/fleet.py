@@ -21,13 +21,13 @@ def slug(name):
 
 SETUP_CMD = """@echo off
 rem ===========================================================================
-rem  NetSentinel - one-click setup for {name}
+rem  Prahari - one-click setup for {name}
 rem  Run this on the always-on PC at {name}. It installs if needed, then joins
 rem  this site to the head office console.
 rem ===========================================================================
 setlocal
 cd /d "%~dp0"
-title NetSentinel - {name}
+title Prahari - {name}
 
 if not exist ".venv\\Scripts\\python.exe" (
   echo   First run - installing, please wait ...
@@ -50,12 +50,12 @@ echo.
 pause
 """
 
-CHECKLIST = """NetSentinel - setup checklist for {name}
+CHECKLIST = """Prahari - setup checklist for {name}
 =====================================================
 
 On the always-on PC (a mini PC on a UPS, wired to the core switch - not a guest AP):
 
-[ ] 1. Copy the NetSentinel folder to C:\\NetSentinel and run setup-{slug}.cmd
+[ ] 1. Copy the Prahari folder to C:\\Prahari and run setup-{slug}.cmd
        (it installs Python if needed, then Tailscale, then joins this site)
 [ ] 2. Run setup-{slug}.cmd  (installs, then joins this site to head office)
 [ ] 3. Right-click autostart_install.bat -> Run as administrator

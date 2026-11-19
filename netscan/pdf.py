@@ -1,6 +1,6 @@
 """A very small PDF writer - enough for a branded monthly report, no dependencies.
 
-NetSentinel ships without pip installs, so reportlab is not available on a hotel PC. This
+Prahari ships without pip installs, so reportlab is not available on a hotel PC. This
 module writes a valid PDF 1.4 file with the standard Helvetica fonts: text, rules, filled
 bars and simple tables, wrapped using the real Helvetica advance widths.
 """

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate sbom.json - a software bill of materials for this build.
 
-Lists the Python runtime, every standard-library module NetSentinel imports, and the
+Lists the Python runtime, every standard-library module Prahari imports, and the
 optional third-party packages, with versions, licences and where they come from.
 Run it in the build:  python sbom.py
 """
@@ -60,7 +60,7 @@ def main():
                     stdlib.add(name)
 
     components = [{
-        "type": "application", "name": "NetSentinel", "version": netscan.__version__,
+        "type": "application", "name": "Prahari", "version": netscan.__version__,
         "licence": "proprietary", "hash_sha256": digest.hexdigest(),
         "files": len(files),
     }, {
@@ -82,11 +82,11 @@ def main():
         "serialNumber": "urn:uuid:" + digest.hexdigest()[:32],
         "metadata": {
             "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "component": {"name": "NetSentinel", "version": netscan.__version__},
+            "component": {"name": "Prahari", "version": netscan.__version__},
             "tools": [{"name": "sbom.py"}],
         },
         "components": components,
-        "notes": ("Generated from the source tree. NetSentinel runs on the Python standard "
+        "notes": ("Generated from the source tree. Prahari runs on the Python standard "
                   "library; the optional packages are used only for the features named in "
                   "'purpose'."),
     }

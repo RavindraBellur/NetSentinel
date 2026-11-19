@@ -1,10 +1,10 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title NetSentinel - build EXE
+title Prahari - build EXE
 
 echo ============================================================
-echo   Build NetSentinel.exe  ^(single file, no Python needed after^)
+echo   Build Prahari.exe  ^(single file, no Python needed after^)
 echo ============================================================
 echo.
 
@@ -22,7 +22,7 @@ if errorlevel 1 (
 )
 
 echo   Building ... this takes a minute or two.
-".venv\Scripts\pyinstaller.exe" --onefile --name NetSentinel --console --icon netsentinel.ico ^
+".venv\Scripts\pyinstaller.exe" --onefile --name Prahari --console --icon netsentinel.ico ^
   --add-data "netscan;netscan" ^
   --hidden-import netscan.netinfo --hidden-import netscan.discovery ^
   --hidden-import netscan.fingerprint --hidden-import netscan.monitor ^
@@ -35,9 +35,9 @@ echo   Building ... this takes a minute or two.
   --hidden-import netscan.totp --hidden-import netscan.certs --hidden-import netscan.heartbeat --hidden-import netscan.fleet --hidden-import netscan.tailnet ^
   netsentinel.py
 
-if exist "dist\NetSentinel.exe" (
+if exist "dist\Prahari.exe" (
   echo.
-  echo   Done:  dist\NetSentinel.exe
+  echo   Done:  dist\Prahari.exe
   echo   Copy that single file anywhere and run it. For packet capture it
   echo   still needs Npcap installed and "Run as administrator".
 ) else (

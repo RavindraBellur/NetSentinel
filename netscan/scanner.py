@@ -11,6 +11,7 @@ from . import (alerts, anomaly, auth, backup as backup_mod, discovery, fingerpri
                heartbeat as hb_mod, monitor, netflow, netinfo,
                defaults as defaults_mod, ports as ports_mod, posture,
                remediation as remediation_mod,
+               sensors as sensors_mod,
                telegram as telegram_mod,
                topology as topology_mod, vault as vault_mod,
                wifi as wifi_mod,
@@ -66,6 +67,7 @@ class Scanner:
                            "ts": 0}
         self.topology = {"nodes": [], "links": [], "stats": {}, "ts": 0}
         self.defaults_state = {"state": "idle", "checked": 0, "findings": [], "ts": 0}
+        self.sensors = sensors_mod.SensorRunner(log=self.log)
         self._scan_thread = None
         self._snmp_poller = None
         self._capture = None
@@ -301,6 +303,52 @@ class Scanner:
             self.topology = dict(self.topology, error=str(exc)[:120])
         return self.topology
 
+    def run_sensors(self, wait=False):
+        """Poll the user-defined sensors in their own thread, so a slow website never delays
+        the device poll. Returns the changes when wait=True (tests), else None."""
+        if getattr(self, "_sensor_thread", None) is not None and self._sensor_thread.is_alive():
+            return None
+        result = {}
+
+        def work():
+            result["changed"] = self._run_sensors_now()
+        self._sensor_thread = threading.Thread(target=work, daemon=True, name="sensors")
+        self._sensor_thread.start()
+        if wait:
+            self._sensor_thread.join()
+            return result.get("changed", [])
+        return None
+
+    def _run_sensors_now(self):
+        # 30-day retention for sensor history, applied once a day
+        if time.time() - getattr(self, "_sensor_pruned", 0) > 86400:
+            self._sensor_pruned = time.time()
+            try:
+                store.prune_sensor_samples(30)
+            except Exception:
+                pass
+        try:
+            changed = self.sensors.run_once()
+        except Exception as exc:
+            self.log(f"sensor run failed: {exc}")
+            return []
+        for item in changed:
+            if item["state"] in (sensors_mod.DOWN, sensors_mod.WARN):
+                down = item["state"] == sensors_mod.DOWN
+                try:
+                    alerts.notify_incident(settings.load(), {
+                        "id": f"SEN-{item['id']}", "severity": "high" if down else "medium",
+                        "title": f"{item['name']} is {'down' if down else 'in warning'}",
+                        "device_name": item["name"],
+                        "device_ip": item.get("target", ""),
+                        "diagnosis": {"root_cause": item["message"], "confidence": 100,
+                                      "actions": ["Open the Sensors tab for the history",
+                                                  "Check the service on the host"]}},
+                        log=self.log)
+                except Exception:
+                    pass
+        return changed
+
     def refresh_wifi(self):
         """Called by the poller every few minutes: read the APs' dot11 counters."""
         try:
@@ -332,6 +380,10 @@ class Scanner:
         except Exception as exc:
             out["exposure"] = {"findings": [], "counts": {}, "total": 0, "error": str(exc)[:120]}
         out["defaults"] = self.defaults_state
+        try:
+            out["sensors"] = self.sensors.view()
+        except Exception as exc:
+            out["sensors"] = {"sensors": [], "counts": {}, "total": 0, "error": str(exc)[:120]}
         try:
             with self.lock:
                 devices = list(self.devices.values())
@@ -577,7 +629,7 @@ class Scanner:
             return {"ok": False, "message": "Remote actions are switched off (--no-remote-control)"}
         if not from_this_pc and not self.allow_remote_control:
             return {"ok": False, "message": "Remote actions can only be started from the PC running "
-                                            "NetSentinel. Start it with --allow-remote-control."}
+                                            "Prahari. Start it with --allow-remote-control."}
         clean = remote.valid_ip(ip)
         if not clean:
             return {"ok": False, "message": "invalid device address"}

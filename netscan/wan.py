@@ -32,7 +32,7 @@ SOURCES = (
 
 
 def _fetch(url, kind, timeout=6):
-    req = urllib.request.Request(url, headers={"User-Agent": "NetSentinel/1.4",
+    req = urllib.request.Request(url, headers={"User-Agent": "Prahari/1.4",
                                               "Accept": "application/json,text/plain,*/*"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         raw = resp.read(65536).decode("utf-8", "replace")
@@ -80,7 +80,7 @@ def _isp_for(ip, timeout=6):
     try:
         with urllib.request.urlopen(
             urllib.request.Request(f"https://ipinfo.io/{ip}/json",
-                                   headers={"User-Agent": "NetSentinel/1.4"}),
+                                   headers={"User-Agent": "Prahari/1.4"}),
             timeout=timeout,
         ) as resp:
             data = json.loads(resp.read(65536).decode("utf-8", "replace"))
@@ -94,7 +94,7 @@ def _notify(cfg, title, body, severity="high"):
     """Send a line-change alert through whatever channel is configured."""
     results = {}
     try:
-        ok, msg = alerts.send_email(cfg, f"[NetSentinel] {title}", body)
+        ok, msg = alerts.send_email(cfg, f"[Prahari] {title}", body)
         if (cfg.get("email") or {}).get("enabled"):
             results["email"] = msg
     except Exception as exc:

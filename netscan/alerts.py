@@ -56,7 +56,7 @@ def flush(cfg, log=None):
                 import time as _time
                 stamp = _time.strftime("%d/%m/%Y %H:%M", _time.localtime(when)) if when else "earlier"
                 ok, msg = send_email(
-                    cfg, subject.replace("[NetSentinel]", "[NetSentinel] (delayed)"),
+                    cfg, subject.replace("[Prahari]", "[Prahari] (delayed)"),
                     f"{body}\n\n--\nThis alert was raised at {stamp} but could not be sent "
                     f"then (no internet at the site). It is being delivered now.",
                     to=payload.get("to") or None)
@@ -87,7 +87,7 @@ def send_email(cfg, subject, body, to=None, attachments=None):
         return False, "email is not configured"
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = e.get("from") or e.get("username") or "netsentinel@localhost"
+    msg["From"] = e.get("from") or e.get("username") or "prahari@localhost"
     msg["To"] = ", ".join(recipients)
     msg.set_content(body)
     for path in (attachments or []):
@@ -134,7 +134,7 @@ def send_webhook(cfg, payload):
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             w["url"], data=data,
-            headers={"Content-Type": "application/json", "User-Agent": "NetSentinel/1.3"},
+            headers={"Content-Type": "application/json", "User-Agent": "Prahari/1.3"},
         )
         with urllib.request.urlopen(req, timeout=15) as resp:
             return 200 <= resp.status < 300, f"HTTP {resp.status}"
@@ -167,7 +167,7 @@ def format_cef(inc):
         f"cn1Label=Confidence cn1={d.get('confidence', 0)} "
         f"msg={_cef_escape(inc.get('device_name', '') + ' ' + inc.get('state', ''))}"
     )
-    return (f"CEF:0|NetSentinel|NetSentinel|{VERSION}|{_cef_escape(sev)}|{name}|"
+    return (f"CEF:0|Prahari|Prahari|{VERSION}|{_cef_escape(sev)}|{name}|"
             f"{CEF_SEV.get(sev, 5)}|{ext}")
 
 
@@ -182,7 +182,7 @@ def format_rfc5424(inc, facility=13):
     msg = (f"severity={inc.get('severity')} state={inc.get('state')} "
            f"device={inc.get('device_name')} ip={inc.get('device_ip')} "
            f"title={inc.get('title')}")
-    return f"<{pri}>1 {stamp} {host} netsentinel - - - {msg[:900]}"
+    return f"<{pri}>1 {stamp} {host} prahari - - - {msg[:900]}"
 
 
 def send_syslog(cfg, line):
@@ -241,7 +241,7 @@ def send_slack(cfg, inc, text):
         blocks.append({"type": "section", "text": {"type": "mrkdwn",
             "text": "*Do this*\n" + "\n".join(f"{i+1}. {a}" for i, a in enumerate(actions[:4]))}})
     blocks.append({"type": "context", "elements": [{"type": "mrkdwn",
-        "text": f"NetSentinel · {cfg.get('site_name') or 'site'} · {text[:120]}"}]})
+        "text": f"Prahari · {cfg.get('site_name') or 'site'} · {text[:120]}"}]})
     try:
         ok, msg = _post_json(slack["webhook_url"],
                              {"text": f"{inc.get('title')} - {inc.get('device_name')}",
@@ -271,9 +271,9 @@ def send_teams(cfg, inc, text):
     card = {
         "@type": "MessageCard", "@context": "https://schema.org/extensions",
         "themeColor": colour,
-        "summary": inc.get("title", "NetSentinel incident"),
+        "summary": inc.get("title", "Prahari incident"),
         "title": f"{inc.get('severity', '').upper()}: {inc.get('title', '')}",
-        "sections": [{"activityTitle": cfg.get("site_name") or "NetSentinel",
+        "sections": [{"activityTitle": cfg.get("site_name") or "Prahari",
                       "activitySubtitle": text[:160], "facts": facts, "markdown": True}],
     }
     try:
@@ -312,7 +312,7 @@ def incident_text(inc):
         lines += ["Data that would raise confidence:"]
         lines += ["  - " + g for g in d["data_gaps"][:4]]
         lines.append("")
-    lines.append("-- NetSentinel")
+    lines.append("-- Prahari")
     return "\n".join(lines)
 
 
@@ -321,7 +321,7 @@ def notify_incident(cfg, inc, log=None):
     severity = inc.get("severity", "medium")
     state = inc.get("state", "open")
     prefix = {"open": "OPEN", "escalated": "ESCALATED", "resolved": "RESOLVED"}.get(state, state.upper())
-    subject = f"[NetSentinel] {prefix} {severity.upper()}: {inc.get('title', '')}"
+    subject = f"[Prahari] {prefix} {severity.upper()}: {inc.get('title', '')}"
     body = incident_text(inc)
     results = {}
     with _send_lock:
@@ -381,12 +381,12 @@ def notify_incident(cfg, inc, log=None):
 def test_channels(cfg):
     """Used by the Settings page: prove the email/webhook works."""
     out = {}
-    ok, msg = send_email(cfg, "[NetSentinel] test message",
-                         "This is a test from NetSentinel. If you are reading it, alerts will work.")
+    ok, msg = send_email(cfg, "[Prahari] test message",
+                         "This is a test from Prahari. If you are reading it, alerts will work.")
     out["email"] = {"ok": ok, "message": msg}
-    ok, msg = send_webhook(cfg, {"text": "NetSentinel test message", "severity": "info"})
+    ok, msg = send_webhook(cfg, {"text": "Prahari test message", "severity": "info"})
     out["webhook"] = {"ok": ok, "message": msg}
-    sample = {"severity": "high", "state": "open", "title": "Test incident from NetSentinel",
+    sample = {"severity": "high", "state": "open", "title": "Test incident from Prahari",
               "device_name": "test-device", "device_ip": "192.168.1.99",
               "diagnosis": {"root_cause": "This is a test message", "confidence": 100,
                             "category_label": "Test",
@@ -402,7 +402,7 @@ def test_channels(cfg):
             ok, msg = sender(cfg, sample, "test")
             out[name] = {"ok": ok, "message": msg}
     if (cfg.get("push") or {}).get("enabled"):
-        ok, msg = push.send(cfg, "Test from NetSentinel", "Phone alerts are working.",
+        ok, msg = push.send(cfg, "Test from Prahari", "Phone alerts are working.",
                             "info")
         out["push"] = {"ok": ok, "message": msg}
     return out

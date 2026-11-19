@@ -68,7 +68,7 @@ def make_self_signed(cert_path=DEFAULT_CERT, key_path=DEFAULT_KEY, days=825,
     cn = common_name or names[0]
     subject = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, cn),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "NetSentinel"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Prahari"),
     ])
     san = [x509.DNSName(n) for n in names] + [x509.IPAddress(ipaddress.ip_address(i)) for i in ips]
     now = datetime.datetime.now(datetime.timezone.utc)

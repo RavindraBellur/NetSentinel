@@ -91,7 +91,7 @@ def _urlopen(req, timeout, url):
 def _open(url, user=None, password=None, timeout=3.0, method="GET"):
     """Request a URL, answering a Basic or Digest challenge once."""
     req = urllib.request.Request(url, method=method,
-                                 headers={"User-Agent": "NetSentinel-defaults/1.0"})
+                                 headers={"User-Agent": "Prahari-defaults/1.0"})
     if user is not None:
         req.add_header("Authorization", "Basic " + _b64(f"{user}:{password}"))
     try:
@@ -101,7 +101,7 @@ def _open(url, user=None, password=None, timeout=3.0, method="GET"):
         challenge = exc.headers.get("WWW-Authenticate") or ""
         if exc.code == 401 and challenge.lower().startswith("digest") and user is not None:
             req2 = urllib.request.Request(url, method=method,
-                                          headers={"User-Agent": "NetSentinel-defaults/1.0"})
+                                          headers={"User-Agent": "Prahari-defaults/1.0"})
             req2.add_header("Authorization",
                             _digest_header(challenge, user, password, method, "/"))
             try:
@@ -141,7 +141,7 @@ def check_rtsp(ip, port, user, password, timeout=3.0):
     try:
         request = (f"DESCRIBE {uri} RTSP/1.0\r\nCSeq: 1\r\n"
                    f"Authorization: Basic {_b64(f'{user}:{password}')}\r\n"
-                   f"User-Agent: NetSentinel\r\n\r\n")
+                   f"User-Agent: Prahari\r\n\r\n")
         sock.sendall(request.encode())
         sock.settimeout(timeout)
         head = sock.recv(256).decode("latin-1", "replace")
@@ -163,7 +163,7 @@ def rtsp_demands_login(ip, port=554, timeout=3.0):
         return False
     try:
         sock.sendall(f"DESCRIBE rtsp://{ip}:{port}/ RTSP/1.0\r\nCSeq: 1\r\n"
-                     f"User-Agent: NetSentinel\r\n\r\n".encode())
+                     f"User-Agent: Prahari\r\n\r\n".encode())
         sock.settimeout(timeout)
         return sock.recv(256).decode("latin-1", "replace").startswith("RTSP/1.0 401")
     except Exception:
@@ -183,7 +183,7 @@ def rtsp_opens_without_login(ip, port=554, timeout=3.0):
         return False
     try:
         sock.sendall(f"DESCRIBE rtsp://{ip}:{port}/ RTSP/1.0\r\nCSeq: 1\r\n"
-                     f"User-Agent: NetSentinel\r\n\r\n".encode())
+                     f"User-Agent: Prahari\r\n\r\n".encode())
         sock.settimeout(timeout)
         return sock.recv(256).decode("latin-1", "replace").startswith("RTSP/1.0 200")
     except Exception:

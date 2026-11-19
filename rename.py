@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
-"""Rebrand NetSentinel to any name, in one command.
+"""Rebrand Prahari to any other name, in one command.
 
-    python3 rename.py --name "Prahari" --devanagari "प्रहरी" \
-                      --tagline "the watchman on your network"
+    python3 rename.py --name "Netra" --devanagari "नेत्र" \
+                      --tagline "the eye on your network"
 
 It rewrites the product name in every user-facing string, the UI, the batch files, the
 spec, the app bundle and the docs, and renames the entry script. Internal module names
-(`netscan`) and the data folder (`~/.netsentinel`) are left alone on purpose: renaming
-them would orphan the database of an existing install.
+(`netscan`), the data folder (`~/.netsentinel`), the entry script (`netsentinel.py`) and the
+GitHub repository the updater reads are left alone on purpose: renaming them would orphan the
+database of an existing install or stop installed copies from accepting updates.
 """
 import argparse
 import os
 import re
 import sys
 
-OLD = "NetSentinel"
+OLD = "Prahari"
 OLD_LOWER = "netsentinel"
 SKIP_DIRS = {"__pycache__", ".venv", "build", "build_pyz", "dist", ".git"}
 TEXT_EXT = {".py", ".bat", ".cmd", ".md", ".txt", ".spec", ".yml", ".yaml", ".sh",
@@ -36,29 +37,29 @@ def files(root):
 
 
 def rebrand(path, new, dev, tagline):
-    with open(path, encoding="utf-8", errors="ignore") as fh:
-        text = fh.read()
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
     original = text
-    text = text.replace(OLD, new)
-    # keep the CLI/module name lowercase where it is a command
-    text = re.sub(r"\bnetsentinel\.py\b", f"{new.lower()}.py", text)
-    text = re.sub(r"\bnetsentinel\.spec\b", f"{new.lower()}.spec", text)
-    text = text.replace(f"NetSentinel-{''}", new)
+    protected = "RavindraBellur/NetSentinel"          # the repository installed copies update from
+    text = text.replace(protected, "\x00REPO\x00").replace(OLD, new).replace("\x00REPO\x00", protected)
     if dev:
-        text = text.replace(f"<title>{new} 1.", f"<title>{new} · {dev} 1.")
+        text = text.replace("प्रहरी", dev)
     if tagline:
-        text = text.replace(f"LAN discovery, monitoring and multi-site network console",
-                            f"{tagline}")
+        text = text.replace("LAN discovery, monitoring and multi-site network console", tagline)
     if text != original:
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(text)
+        with open(path, "wb") as fh:                   # bytes: keeps Windows line endings in .bat files
+            fh.write(text.encode("utf-8"))
         return True
     return False
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--name", default="Prahari")
+    ap.add_argument("--name", required=True)
     ap.add_argument("--devanagari", default="प्रहरी")
     ap.add_argument("--tagline", default="the watchman on your network")
     ap.add_argument("--root", default=os.path.dirname(os.path.abspath(__file__)))
@@ -68,14 +69,6 @@ def main():
     for path in files(args.root):
         if rebrand(path, args.name, args.devanagari, args.tagline):
             changed += 1
-    # rename the entry script and the spec
-    for old_name, new_name in ((f"{OLD_LOWER}.py", f"{args.name.lower()}.py"),
-                               (f"{OLD_LOWER}.spec", f"{args.name.lower()}.spec")):
-        src = os.path.join(args.root, old_name)
-        dst = os.path.join(args.root, new_name)
-        if os.path.exists(src):
-            os.replace(src, dst)
-            print(f"  renamed {old_name} -> {new_name}")
     print(f"  {changed} files rebranded to {args.name} ({args.devanagari})")
     return 0
 

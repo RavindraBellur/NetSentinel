@@ -1,6 +1,6 @@
 """Certificate lifecycle: expiry watch, renewal hook, CSR for your own CA.
 
-NetSentinel does not pretend to be a certificate authority. For a public name you either
+Prahari does not pretend to be a certificate authority. For a public name you either
 let a tool renew (win-acme on Windows, certbot on Linux - both detected automatically) or
 your PKI signs a CSR this module generates. What it *does* do is watch the clock: it warns
 in the console, in the event log and by alert when the certificate is close to expiring,
@@ -134,9 +134,9 @@ class CertWatcher(threading.Thread):
             store.add_event("tls", "high", message)
             self.log(message)
             try:
-                alerts.send_email(cfg, "[NetSentinel] " + message,
+                alerts.send_email(cfg, "[Prahari] " + message,
                                   f"The console certificate at {self.cert_path} expires on "
-                                  f"{info['not_after']}.\n\nRenew it and restart NetSentinel, or "
+                                  f"{info['not_after']}.\n\nRenew it and restart Prahari, or "
                                   f"configure certs.renew_command.")
             except Exception:
                 pass

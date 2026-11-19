@@ -1,3 +1,3 @@
-"""NetSentinel - LAN discovery, monitoring and multi-site network console."""
+"""Prahari - LAN discovery, monitoring and multi-site network console."""
 
-__version__ = "1.28.0"
+__version__ = "1.31.0"

@@ -1,9 +1,9 @@
-# PyInstaller spec for NetSentinel - build the Windows exe with ONE command:
+# PyInstaller spec for Prahari - build the Windows exe with ONE command:
 #
 #     pip install pyinstaller
 #     pyinstaller netsentinel.spec
 #
-# Result: dist\NetSentinel.exe (single file, Python bundled, nothing to install).
+# Result: dist\Prahari.exe (single file, Python bundled, nothing to install).
 # Every module and data file is listed here, so no --hidden-import flags are needed.
 
 block_cipher = None
@@ -14,7 +14,7 @@ HIDDEN = [
     "netscan.agent", "netscan.anomaly", "netscan.posture", "netscan.push", "netscan.backup",
     "netscan.telegram", "netscan.upgrade", "netscan.snmpv3", "netscan.wifi", "netscan.topology",
     "netscan.sla", "netscan.pdf", "netscan.ports", "netscan.remediation",
-    "netscan.vault", "netscan.defaults", "netscan.scheduled", "netscan.alerts", "netscan.apitokens", "netscan.auth",
+    "netscan.vault", "netscan.defaults", "netscan.scheduled", "netscan.sensors", "netscan.mirror", "netscan.alerts", "netscan.apitokens", "netscan.auth",
     "netscan.certs", "netscan.diagnose", "netscan.discovery", "netscan.fingerprint",
     "netscan.fleet", "netscan.heartbeat", "netscan.monitor", "netscan.netflow",
     "netscan.netguard", "netscan.netinfo", "netscan.oidc", "netscan.oui",
@@ -51,7 +51,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="NetSentinel",
+    name="Prahari",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

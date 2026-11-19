@@ -1,4 +1,4 @@
-"""Import first in every test: points NetSentinel's data folder at a throw-away directory."""
+"""Import first in every test: points Prahari's data folder at a throw-away directory."""
 import os
 import sys
 import tempfile

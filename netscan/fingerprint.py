@@ -2,7 +2,7 @@
 
 Scoring model: every piece of evidence adds points to one or more device types.
 Highest score wins. Every verdict carries the evidence lines so the operator can
-see *why* NetSentinel called something a KOT printer rather than a printer.
+see *why* Prahari called something a KOT printer rather than a printer.
 """
 
 from __future__ import annotations

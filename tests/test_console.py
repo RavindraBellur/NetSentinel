@@ -94,7 +94,7 @@ class Console(unittest.TestCase):
 
     def test_dashboard_javascript_is_valid(self):
         page = self.get("/").decode()
-        self.assertIn("NetSentinel", page)
+        self.assertIn("Prahari", page)
         node = shutil.which("node")
         if not node:
             self.skipTest("node not installed")
@@ -134,8 +134,26 @@ class Console(unittest.TestCase):
         self.assertTrue(all(c == 401 for c in codes), codes)
         self.assertEqual(self.sign_in("admin", "Test-pass-123", ip_opener), 429)
 
+    def test_quiet_hours_validation_and_dependency_removal(self):
+        code, body = self.post("/api/quiet/save", {"maintenance": "10.0.0.5 | tomorrow | later | x"})
+        self.assertFalse(body["ok"])
+        self.assertIn("YYYY-MM-DD", body["message"])
+        code, body = self.post("/api/quiet/save", {"dependencies": "10.0.0.30 = 10.0.0.2\n10.0.0.31 = 10.0.0.2"})
+        self.assertTrue(body["ok"])
+        code, body = self.post("/api/quiet/save", {"dependencies": "10.0.0.30 = 10.0.0.2"})
+        deps = json.loads(self.get("/api/state"))["settings"]["dependencies"]
+        self.assertEqual(deps, {"10.0.0.30": "10.0.0.2"})          # the removed line is really gone
+
+    def test_sensor_history_survives_junk_hours(self):
+        body = json.loads(self.get("/api/sensor/history?id=S-x&hours=lots"))
+        self.assertEqual(body["count"], 0)
+
+    def test_unknown_sensor_type_refused(self):
+        code, body = self.post("/api/sensors/save", {"sensor": {"type": "shell", "target": "rm -rf /"}})
+        self.assertFalse(body["ok"])
+
     def test_pwa_files_served(self):
-        self.assertIn(b"NetSentinel", self.get("/manifest.json"))
+        self.assertIn(b"Prahari", self.get("/manifest.json"))
         self.assertIn(b"SHELL", self.get("/sw.js"))
 
 

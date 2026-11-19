@@ -1,11 +1,11 @@
-# Builds NetSentinel.exe on a real Windows machine in the cloud - free for public repos.
+# Builds Prahari.exe on a real Windows machine in the cloud - free for public repos.
 #
-#   Run workflow (Actions tab)  -> builds the exe; download "NetSentinel-windows" from the run page.
-#   Push a tag  vX.Y.Z          -> also creates a DRAFT GitHub release with NetSentinel.exe and
-#                                  NetSentinel-app.zip. Installed copies never see a draft.
+#   Run workflow (Actions tab)  -> builds the exe; download "Prahari-windows" from the run page.
+#   Push a tag  vX.Y.Z          -> also creates a DRAFT GitHub release with Prahari.exe and
+#                                  Prahari-app.zip. Installed copies never see a draft.
 #                                  On the publisher's Mac run:  python3 tools/sign_release.py vX.Y.Z
 #                                  which signs latest.json and publishes the release; from then on
-#                                  every NetSentinel picks the update up within 6 hours.
+#                                  every Prahari picks the update up within 6 hours.
 name: Build Windows EXE
 
 on:
@@ -68,26 +68,26 @@ jobs:
       - name: Smoke test the exe (Claude SDK bundled, scapy not bundled, update key set)
         shell: cmd
         run: |
-          dist\NetSentinel.exe --help
-          dist\NetSentinel.exe --selftest-update
+          dist\Prahari.exe --help
+          dist\Prahari.exe --selftest-update
 
       - name: Prove the exe updates itself in place (signed, tamper refused)
         shell: cmd
         run: |
-          python tools\ci_exe_update_test.py dist\NetSentinel.exe
+          python tools\ci_exe_update_test.py dist\Prahari.exe
 
       - name: Package the app code for source installs
         shell: pwsh
         run: |
-          python -c "import os, zipfile; top=['netscan','netsentinel.py','requirements.txt','README.md','EULA.txt','sbom.json','LIMITS.md']; z=zipfile.ZipFile('dist/NetSentinel-app.zip','w',zipfile.ZIP_DEFLATED); [z.write(os.path.join(r,f), os.path.join(r,f).replace(os.sep,'/')) for t in top for r,d,fs in (os.walk(t) if os.path.isdir(t) else [('',[],[t])]) for f in fs if '__pycache__' not in r and not f.endswith('.pyc')]; z.close()"
-          python -c "import zipfile; print(len(zipfile.ZipFile('dist/NetSentinel-app.zip').namelist()), 'files in NetSentinel-app.zip')"
+          python -c "import os, zipfile; top=['netscan','netsentinel.py','requirements.txt','README.md','EULA.txt','sbom.json']; z=zipfile.ZipFile('dist/Prahari-app.zip','w',zipfile.ZIP_DEFLATED); [z.write(os.path.join(r,f), os.path.join(r,f).replace(os.sep,'/')) for t in top for r,d,fs in (os.walk(t) if os.path.isdir(t) else [('',[],[t])]) for f in fs if '__pycache__' not in r and not f.endswith('.pyc')]; z.close()"
+          python -c "import zipfile; print(len(zipfile.ZipFile('dist/Prahari-app.zip').namelist()), 'files in Prahari-app.zip')"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: NetSentinel-windows
+          name: Prahari-windows
           path: |
-            dist/NetSentinel.exe
-            dist/NetSentinel-app.zip
+            dist/Prahari.exe
+            dist/Prahari-app.zip
             README.md
             EULA.txt
             LIMITS.md
@@ -99,5 +99,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" dist/NetSentinel.exe dist/NetSentinel-app.zip `
-            --draft --title "NetSentinel ${{ github.ref_name }}" --generate-notes
+          gh release create "${{ github.ref_name }}" dist/Prahari.exe dist/Prahari-app.zip `
+            --draft --title "Prahari ${{ github.ref_name }}" --generate-notes

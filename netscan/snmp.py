@@ -1,7 +1,7 @@
 """Tiny SNMPv2c client (GET + GETNEXT walk) with no third-party dependencies.
 
 Used to identify managed switches / access points / printers and to read
-per-interface byte counters from a router or switch, which is how NetSentinel
+per-interface byte counters from a router or switch, which is how Prahari
 works out which port (and therefore which device) is eating the bandwidth.
 """
 

@@ -5,4 +5,4 @@ build/
 *.key
 .venv/
 build_pyz/
-dist/NetSentinel.app/
+dist/Prahari.app/

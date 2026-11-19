@@ -167,7 +167,7 @@ class Agent(threading.Thread):
             self.console + REPORT_PATH, data=payload, method="POST",
             headers={"Content-Type": "application/json",
                      "Authorization": "Bearer " + self.token,
-                     "User-Agent": "NetSentinel-agent/1.7"})
+                     "User-Agent": "Prahari-agent/1.7"})
         try:
             ctx = None
             if self.console.startswith("https://"):

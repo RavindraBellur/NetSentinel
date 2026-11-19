@@ -1,6 +1,6 @@
 """Remote access to discovered devices.
 
-NetSentinel deliberately does **not** ship its own remote-desktop server - a
+Prahari deliberately does **not** ship its own remote-desktop server - a
 hidden remote-control service inside a scanning tool would be a security hole.
 Instead it drives the tools Windows already has, or the one you installed:
 

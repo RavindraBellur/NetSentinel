@@ -40,7 +40,7 @@ def send(month=None, to=None, log=None):
     recipients = to or [x for x in (conf.get("to") or []) if "@" in x]
     if not recipients:
         return False, "no recipients configured"
-    out_dir = os.path.join(tempfile.gettempdir(), "netsentinel-sla")
+    out_dir = os.path.join(tempfile.gettempdir(), "prahari-sla")
     path = sla.render(month or None, out_dir=out_dir)
     site = cfg.get("site_name") or "this site"
     start, end, label = sla.month_range(month or None)
@@ -48,7 +48,7 @@ def send(month=None, to=None, log=None):
             "It covers availability, incidents, mean time to resolve, latency, packet loss, "
             "disk trends and the security score, with a page explaining how each number was "
             "measured.\n\n"
-            "This message was produced automatically by NetSentinel.")
+            "This message was produced automatically by Prahari.")
     ok, msg = alerts.send_email(cfg, f"Monthly service report - {site} - {label}",
                                 body, to=recipients, attachments=[path])
     if ok:

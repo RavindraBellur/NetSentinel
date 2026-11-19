@@ -25,7 +25,7 @@ def text_report(snap, width=110):
     out = []
     line = "=" * width
     out.append(line)
-    out.append("NetSentinel - local network report".center(width))
+    out.append("Prahari - local network report".center(width))
     out.append(line)
     out.append(f"Generated        : {snap.get('status', {}).get('last_scan') or 'scanning'}")
     out.append(f"This computer    : {loc.get('ip','?')}  (adapter {loc.get('adapter','?')}, MAC {loc.get('mac') or 'n/a'})")
@@ -108,7 +108,7 @@ def text_report(snap, width=110):
         out.append("  Best: export NetFlow v5/v9, IPFIX or sFlow from the router to this PC")
         out.append("        (UDP 2055 / 6343) - then this list shows real per-device usage.")
         out.append("  Or: enable SNMP (community 'public') on the router/switch for per-port usage,")
-        out.append("  or install Npcap and run NetSentinel as Administrator for passive capture.")
+        out.append("  or install Npcap and run Prahari as Administrator for passive capture.")
 
     notes = snap.get("warnings") or []
     cap = snap.get("capture") or {}
