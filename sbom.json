@@ -1,12 +1,12 @@
 {
   "bomFormat": "CycloneDX-like",
   "specVersion": "1.5 (subset)",
-  "serialNumber": "urn:uuid:1a74955f0e75431df73cebce0a905252",
+  "serialNumber": "urn:uuid:83803fc6ebdea6a2c2a9c8698459b679",
   "metadata": {
-    "timestamp": "2026-11-17T15:35:15Z",
+    "timestamp": "2026-11-19T13:51:49Z",
     "component": {
       "name": "NetSentinel",
-      "version": "1.17.0"
+      "version": "1.21.0"
     },
     "tools": [
       {
@@ -18,10 +18,10 @@
     {
       "type": "application",
       "name": "NetSentinel",
-      "version": "1.17.0",
+      "version": "1.21.0",
       "licence": "proprietary",
-      "hash_sha256": "1a74955f0e75431df73cebce0a9052525e3ad483f158383f5dd626766aac4b6a",
-      "files": 31
+      "hash_sha256": "83803fc6ebdea6a2c2a9c8698459b67954ec6c59ecdeb085206703b5890eb281",
+      "files": 39
     },
     {
       "type": "platform",
@@ -95,6 +95,13 @@
     },
     {
       "type": "library",
+      "name": "python:importlib",
+      "version": "3.12.13",
+      "licence": "PSF-2.0",
+      "scope": "standard library"
+    },
+    {
+      "type": "library",
       "name": "python:io",
       "version": "3.12.13",
       "licence": "PSF-2.0",
@@ -110,6 +117,13 @@
     {
       "type": "library",
       "name": "python:json",
+      "version": "3.12.13",
+      "licence": "PSF-2.0",
+      "scope": "standard library"
+    },
+    {
+      "type": "library",
+      "name": "python:math",
       "version": "3.12.13",
       "licence": "PSF-2.0",
       "scope": "standard library"
@@ -186,6 +200,13 @@
     },
     {
       "type": "library",
+      "name": "python:statistics",
+      "version": "3.12.13",
+      "licence": "PSF-2.0",
+      "scope": "standard library"
+    },
+    {
+      "type": "library",
       "name": "python:struct",
       "version": "3.12.13",
       "licence": "PSF-2.0",
@@ -236,6 +257,13 @@
     {
       "type": "library",
       "name": "python:webbrowser",
+      "version": "3.12.13",
+      "licence": "PSF-2.0",
+      "scope": "standard library"
+    },
+    {
+      "type": "library",
+      "name": "python:zipfile",
       "version": "3.12.13",
       "licence": "PSF-2.0",
       "scope": "standard library"

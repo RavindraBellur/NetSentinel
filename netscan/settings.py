@@ -89,12 +89,18 @@ DEFAULTS = {
     "certs": {"renew_days": 21, "renew_command": "", "auto_restart": True},
     "auth_extra": {"require_totp_for_local": False},
     "heartbeat": {"enabled": False, "url": "", "interval_seconds": 300},
+    "telegram": {"enabled": False, "token": "", "chat_ids": []},
+    "snmp_v3": {"enabled": False, "user": "", "auth_password": "", "auth_proto": "sha1",
+                "priv_password": "", "port": 161},
+    "wifi": {"enabled": True, "client_oid": ""},
+    "backup": {"enabled": True, "every_hours": 24, "keep_daily": 7, "keep_weekly": 4},
+    "fleet_update": {"version": ""},
+    "update": {"check": True, "auto_install": True},
     "oidc": {"enabled": False, "issuer": "", "client_id": "", "client_secret": "",
              "redirect_uri": "", "scopes": "openid profile email",
              "role_claim": "groups", "role_map": {}, "default_role": "viewer",
              "allowed_domains": [], "button_label": "Sign in with your company account"},
     "remote": {"enabled": True, "from_other_devices": False},
-    "update": {"check": True, "auto_install": True},
 }
 
 _lock = threading.RLock()

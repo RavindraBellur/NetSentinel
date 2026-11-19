@@ -7,7 +7,9 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (alerts, auth, discovery, fingerprint, heartbeat as hb_mod, monitor, netflow, netinfo,
+from . import (alerts, anomaly, auth, backup as backup_mod, discovery, fingerprint,
+               heartbeat as hb_mod, monitor, netflow, netinfo,
+               posture, telegram as telegram_mod, wifi as wifi_mod,
                oui, poll, remote, settings, sites, store, syslogrx, wan)
 
 
@@ -51,7 +53,12 @@ class Scanner:
         self.agent = None
         self.heartbeat = None
         self._outbox = None
+        self.backup = None
+        self.telegram = None
         self._host_events = {}
+        self.anomaly = anomaly.AnomalyEngine(log=self.log)
+        self.wifi_state = {"measured": [], "poor": [], "fair": [], "access_points": 0,
+                           "ts": 0}
         self._scan_thread = None
         self._snmp_poller = None
         self._capture = None
@@ -100,6 +107,12 @@ class Scanner:
                         pass
             self._outbox = _th.Thread(target=_flush_loop, daemon=True, name="outbox")
             self._outbox.start()
+        if self.backup is None and (settings.get("backup") or {}).get("enabled", True):
+            self.backup = backup_mod.BackupThread(log=self.log)
+            self.backup.start()
+        if self.telegram is None and (settings.get("telegram") or {}).get("enabled"):
+            self.telegram = telegram_mod.TelegramBot(self, log=self.log)
+            self.telegram.start()
         if self.heartbeat is None and (settings.get("heartbeat") or {}).get("enabled"):
             self.heartbeat = hb_mod.Heartbeat(log=self.log)
             self.heartbeat.start()
@@ -131,6 +144,7 @@ class Scanner:
 
     def stop_monitors(self):
         for thread in (self.poller, self.flow, self.syslog, self.wan_watcher, self.heartbeat,
+                       self.backup, self.telegram,
                        self.branch_reporter, self.lost_contact,
                        self._snmp_poller, self._capture, self._local_rate):
             if thread is not None:
@@ -147,7 +161,14 @@ class Scanner:
         payload = dict(payload or {})
         payload["site"] = name
         sites.ingest(payload)
-        return {"ok": True, "site": name, "hub": settings.get("site_name") or "head office"}, 200
+        reply = {"ok": True, "site": name,
+                 "hub": settings.get("site_name") or "head office"}
+        # tell the branch about a published build it should be running
+        from . import upgrade as upgrade_mod
+        offer = upgrade_mod.hub_reply(payload.get("version"))
+        if offer:
+            reply["update"] = offer
+        return reply, 200
 
     def ingest_agent(self, payload):
         """A host agent reported metrics: store them and flag thresholds."""
@@ -228,6 +249,45 @@ class Scanner:
         rows.sort(key=lambda r: (-len(r["warnings"]), r["host"] or ""))
         return rows
 
+    def refresh_wifi(self):
+        """Called by the poller every few minutes: read the APs' dot11 counters."""
+        try:
+            if not (settings.get("wifi") or {}).get("enabled", True):
+                return self.wifi_state
+            with self.lock:
+                devices = list(self.devices.values())
+            state = wifi_mod.summary(devices)
+            state["ts"] = int(time.time())
+            self.wifi_state = state
+        except Exception as exc:
+            self.wifi_state = dict(self.wifi_state, error=str(exc)[:120])
+        return self.wifi_state
+
+    def insights(self):
+        """Anomalies, forecasts and the security posture score."""
+        out = {"anomalies": [], "forecasts": [], "posture": {"score": 100, "findings": [],
+                                                             "counts": {}, "total": 0}}
+        try:
+            out.update(self.anomaly.view())
+        except Exception as exc:
+            out["error"] = str(exc)[:120]
+        out["wifi"] = self.wifi_state
+        try:
+            with self.lock:
+                devices = list(self.devices.values())
+            cfg = settings.load()
+            tls_on = bool((cfg.get("tls") or {}).get("enabled"))
+            auth_on = bool((cfg.get("auth") or {}).get("enabled")
+                           or (cfg.get("oidc") or {}).get("enabled"))
+            self_findings = posture.self_check(
+                cfg, tls_on=tls_on, auth_on=auth_on,
+                users=store.user_count(), two_factor_users=store.totp_enabled_count())
+            self_findings += posture.snmp_version_finding(cfg)
+            out["posture"] = posture.summarise(devices, self_findings)
+        except Exception as exc:
+            out["posture"]["error"] = str(exc)[:120]
+        return out
+
     def audit(self, user, action, target=""):
         try:
             store.add_event(f"audit {user}", "info", f"{action} {target}".strip())
@@ -287,8 +347,13 @@ class Scanner:
             "wan": self.wan_watcher.snapshot() if self.wan_watcher else {"ips": []},
             "sites": sites.hub_overview(self),
             "hosts": self.host_view(),
+            "insights": self.insights(),
             "heartbeat": self.heartbeat.state if self.heartbeat else {"enabled": False},
             "outbox": store.outbox_stats(),
+            "backup": backup_mod.status(),
+            "telegram": ({"enabled": True, "handled": self.telegram.handled,
+                          "error": self.telegram.last_error} if self.telegram
+                         else {"enabled": False}),
             "branch": self.branch_reporter.status() if self.branch_reporter else {},
             "settings": settings.public_view(),
             "users": store.list_users(),

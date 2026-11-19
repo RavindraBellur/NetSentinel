@@ -43,7 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY, salt TEXT, hash TEXT, role TEXT, created_ts INTEGER,
     last_login_ts INTEGER, must_change INTEGER DEFAULT 0,
-    totp_secret TEXT, totp_enabled INTEGER DEFAULT 0, backup_codes TEXT
+    totp_secret TEXT, totp_enabled INTEGER DEFAULT 0, backup_codes TEXT, sites TEXT
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS hosts (
@@ -57,6 +57,10 @@ CREATE TABLE IF NOT EXISTS outbox (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, kind TEXT, payload TEXT,
     attempts INTEGER DEFAULT 0, last_error TEXT
 );
+CREATE TABLE IF NOT EXISTS host_samples (
+    ts INTEGER, ip TEXT, cpu_pct REAL, mem_pct REAL, disk_pct REAL
+);
+CREATE INDEX IF NOT EXISTS idx_hostsamples ON host_samples (ip, ts);
 CREATE TABLE IF NOT EXISTS branches (
     name TEXT PRIMARY KEY, last_ts INTEGER, payload TEXT
 );
@@ -269,12 +273,15 @@ def _hash(password, salt):
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 200_000).hex()
 
 
-def create_user(username, password, role="admin"):
+def create_user(username, password, role="admin", sites=None):
+    import json
+    _ensure_columns()
     salt = secrets.token_hex(16)
     ok = _exec(
-        "INSERT OR REPLACE INTO users (username, salt, hash, role, created_ts, must_change)"
-        " VALUES (?,?,?,?,?,0)",
-        (username.lower(), salt, _hash(password, salt), role, _now_ts()),
+        "INSERT OR REPLACE INTO users (username, salt, hash, role, created_ts, must_change, sites)"
+        " VALUES (?,?,?,?,?,0,?)",
+        (username.lower(), salt, _hash(password, salt), role, _now_ts(),
+         json.dumps([x for x in (sites or []) if x])),
     )
     return ok is not None
 
@@ -285,7 +292,7 @@ def _ensure_columns():
         conn = _connect()
         cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         for name, decl in (("totp_secret", "TEXT"), ("totp_enabled", "INTEGER DEFAULT 0"),
-                           ("backup_codes", "TEXT")):
+                           ("backup_codes", "TEXT"), ("sites", "TEXT")):
             if name not in cols:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {name} {decl}")
         conn.commit()
@@ -295,7 +302,7 @@ def _ensure_columns():
 
 def user_record(username):
     _ensure_columns()
-    rows = _exec("SELECT username, role, totp_secret, totp_enabled, backup_codes FROM users"
+    rows = _exec("SELECT username, role, totp_secret, totp_enabled, backup_codes, sites FROM users"
                  " WHERE username=?", ((username or "").lower(),), fetch=True)
     if not rows:
         return None
@@ -305,7 +312,18 @@ def user_record(username):
         row["backup_codes"] = json.loads(row.get("backup_codes") or "[]")
     except Exception:
         row["backup_codes"] = []
+    try:
+        row["sites"] = json.loads(row.get("sites") or "[]")
+    except Exception:
+        row["sites"] = []
     return row
+
+
+def set_user_sites(username, sites):
+    import json
+    _ensure_columns()
+    return _exec("UPDATE users SET sites=? WHERE username=?",
+                 (json.dumps([x for x in (sites or []) if x]), (username or "").lower())) is not False
 
 
 def set_totp(username, secret, enabled=False, backup_hashes=None):
@@ -352,6 +370,11 @@ def delete_user(username):
     return _exec("DELETE FROM users WHERE username=?", ((username or "").lower(),)) is not None
 
 
+def totp_enabled_count():
+    rows = _exec("SELECT COUNT(*) AS n FROM users WHERE totp_enabled=1", fetch=True)
+    return (rows[0]["n"] if rows else 0) or 0
+
+
 def user_count():
     rows = _exec("SELECT COUNT(*) AS n FROM users", fetch=True)
     return rows[0]["n"] if rows else 0
@@ -372,6 +395,32 @@ def hosts():
                 "payload": _unjson(r["payload"]) or {}}
         out.append(item)
     return out
+
+
+# ----------------------------------------------------------- host samples ----
+
+def add_host_sample(ip, cpu, mem, disk):
+    return _exec("INSERT INTO host_samples (ts, ip, cpu_pct, mem_pct, disk_pct) VALUES (?,?,?,?,?)",
+                 (_now_ts(), ip, cpu, mem, disk)) is not False
+
+
+def host_history(ip=None, hours=168):
+    cutoff = _now_ts() - int(hours * 3600)
+    if ip:
+        rows = _exec("SELECT ts, ip, cpu_pct, mem_pct, disk_pct FROM host_samples"
+                     " WHERE ip=? AND ts>=? ORDER BY ts", (ip, cutoff), fetch=True)
+    else:
+        rows = _exec("SELECT ts, ip, cpu_pct, mem_pct, disk_pct FROM host_samples"
+                     " WHERE ts>=? ORDER BY ts", (cutoff,), fetch=True)
+    return [dict(r) for r in rows or []]
+
+
+def latency_history(hours=336):
+    """Every sample in the window, for baselining (ip, ts, latency, loss)."""
+    cutoff = _now_ts() - int(hours * 3600)
+    rows = _exec("SELECT ip, ts, latency_ms, loss_pct, state FROM samples"
+                 " WHERE ts>=? ORDER BY ts", (cutoff,), fetch=True)
+    return [dict(r) for r in rows or []]
 
 
 # ----------------------------------------------------------------- outbox ----

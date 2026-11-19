@@ -304,6 +304,54 @@ function viewOverview(){
         '<span class="mono">run.bat --agent --console https://this-pc:8777 --token nsk_...</span> '+
         'on a server to see CPU, memory, disk and service state here.</div>')+
     '</div>'+
+    '<div class="card"><h2>Predictions</h2>'+
+      ((((d.insights||{}).forecasts||[]).length || ((d.insights||{}).anomalies||[]).length)?
+        (((d.insights||{}).forecasts||[]).slice(0,4).map(function(f){
+          return '<div class="kv"><span>'+stDot(f.severity==='high'?'down':(f.severity==='medium'?'degraded':'up'))+
+            esc(f.metric)+' on '+esc(f.ip)+'</span><span class="small">'+esc(f.current_pct)+
+            '% &middot; full in <b>'+esc(f.days_left)+' days</b></span></div>';
+        }).join('')+
+        ((d.insights||{}).anomalies||[]).slice(0,3).map(function(a){
+          return '<div class="kv"><span>'+stDot('degraded')+esc(a.name||a.ip)+'</span>'+
+            '<span class="small">'+esc(a.metric)+' '+esc(a.value)+
+            ' vs usual '+esc(a.baseline)+' <span class="muted">('+esc(a.z)+'&#963;) </span></span></div>';
+        }).join('')) :
+        '<div class="empty">Nothing unusual. Baselines build from '+
+        ((d.insights||{}).baselines||0)+' hour-of-day profiles over the first days of monitoring, '+
+        'then this shows what is drifting.</div>')+
+    '</div>'+
+    '<div class="card" style="margin-top:14px"><h2>Wi-Fi health</h2>'+
+      (function(){
+        var w=(d.insights||{}).wifi||{};
+        if(!(w.measured||[]).length){
+          return '<div class="empty">'+(w.access_points? ('Reading '+w.access_points+
+            ' access point(s) - the first pair of readings is needed before rates mean anything.')
+            : 'No access point has been found yet.')+'</div>';
+        }
+        return (w.measured||[]).slice(0,5).map(function(r){
+          var col=r.verdict==='poor'?'#d9534f':(r.verdict==='fair'?'#e0a02c':'#3ba55d');
+          return '<div class="kv"><span>'+stDot(r.verdict==='poor'?'down':(r.verdict==='fair'?'degraded':'up'))+
+            esc(r.ap||r.ip)+' <span class="muted small">radio '+esc(r.radio)+'</span></span>'+
+            '<span class="small" style="color:'+col+'">'+esc(r.retry_pct)+'% retry &middot; '+
+            esc(r.fail_pct)+'% fail</span></div>';
+        }).join('') + ((w.poor||[]).length? '<div class="note bad" style="margin-top:8px">'+
+          w.poor.length+' radio(s) are retrying heavily - guests will call this "slow Wi-Fi".</div>':'');
+      })()+
+    '</div>'+
+    '<div class="card" style="margin-top:14px"><h2>Security posture</h2>'+
+      (function(){
+        var po=(d.insights||{}).posture||{}, fs=(po.findings||[]);
+        var col=po.score>=85?'#3ba55d':(po.score>=60?'#e0a02c':'#d9534f');
+        return '<div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">'+
+          '<div style="font:600 26px system-ui;color:'+col+'">'+(po.score!=null?po.score:100)+'</div>'+
+          '<div class="small muted">out of 100 &middot; '+((po.counts||{}).high||0)+' high, '+
+          ((po.counts||{}).medium||0)+' medium findings</div></div>'+
+          (fs.length? fs.slice(0,4).map(function(f){
+            return '<div class="kv"><span><span class="badge sev-'+esc(f.severity)+'">'+
+              esc(f.severity)+'</span> '+esc(f.text).slice(0,78)+'</span></div>';
+          }).join('') : '<div class="empty">No configuration problems found.</div>');
+      })()+
+    '</div>'+
     '<div class="card" style="margin-top:14px"><h2>Internet path</h2>'+
       '<div class="kv"><span>Gateway</span><span>'+(d.gateway&&d.gateway.ip?esc(d.gateway.ip):'&mdash;')+
         ' '+stDot(d.gateway&&d.gateway.state)+'</span></div>'+
@@ -572,6 +620,7 @@ function viewLocations(){
     kpi('Open incidents', t.incidents||0, (t.critical||0)+' critical')+
     kpi('Links down', t.down_links||0, 'gateway unreachable')+
     '</div>'+
+    ((d.scope&&d.scope.note)? '<div class="note" style="margin-bottom:12px">'+esc(d.scope.note)+'</div>':'')+
     '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;'+
     'margin-bottom:10px"><h2 style="margin:0">All locations - corporate office and hotels</h2>'+
     '<input id="siteq" placeholder="search site, IP or no-contact" value="'+esc(S.siteQ||'')+'" '+
@@ -800,7 +849,66 @@ function viewSettings(){
      '<button class="sm" onclick="testBranch()">Send a test report</button>'+
      '<div id="brmsg" class="small muted" style="margin-top:6px"></div>'+
    '</div>'+
-   '<div class="card"><h2>SIEM &amp; chat alerts</h2>'+
+   '<div class="card"><h2>SNMPv3 (encrypted polling)</h2>'+
+     chk('Poll devices with SNMPv3 auth+priv','v3en',(s.snmp_v3||{}).enabled)+
+     '<div class="grid3">'+fld('User','v3user',(s.snmp_v3||{}).user)+
+       '<div class="field"><label>Auth protocol</label><select id="v3proto">'+
+         ['sha1','sha256','sha512','md5'].map(function(v){return '<option '+((s.snmp_v3||{}).auth_proto===v?'selected':'')+'>'+v+'</option>';}).join('')+
+       '</select></div>'+
+       fld('Port','v3port',(s.snmp_v3||{}).port||161,'number')+'</div>'+
+     fld('Auth password','v3auth',(s.snmp_v3||{}).auth_password)+
+     fld('Privacy password (blank = authNoPriv)','v3priv',(s.snmp_v3||{}).priv_password)+
+     '<div class="small muted" style="margin-bottom:10px">Privacy is AES-128-CFB. '+
+     'Community strings are no longer sent when this is on.</div>'+
+     '<button class="sm" onclick="testSnmp()">Test against this PC</button> '+
+     '<span id="v3msg" class="small muted"></span>'+
+   '</div>'+
+   '<div class="card" style="margin-top:14px"><h2>Wi-Fi health</h2>'+
+     chk('Read Wi-Fi counters from the access points','wfen',(s.wifi||{}).enabled!==false)+
+     fld('Client-count OID (optional, vendor specific)','wfoid',(s.wifi||{}).client_oid)+
+     '<div class="small muted">Retry and failure rates come from the standard '+
+     'IEEE802dot11 counters, so they work on any AP that speaks SNMP.</div>'+
+   '</div>'+
+   '<div class="card"><h2>Telegram bot</h2>'+
+     chk('Answer commands from Telegram','tgen',(s.telegram||{}).enabled)+
+     fld('Bot token (from @BotFather)','tgtok',(s.telegram||{}).token)+
+     fld('Allowed chat ids (comma separated)','tgchats',((s.telegram||{}).chat_ids||[]).join(', '))+
+     '<div class="small muted" style="margin-bottom:10px">Send any message to your bot and it '+
+     'replies with the chat id to paste here. Then: /status, /incidents, /ack, /sites.</div>'+
+     '<button class="sm" onclick="testTelegram()">Send test message</button> '+
+     '<span id="tgmsg" class="small muted"></span>'+
+   '</div>'+
+   '<div class="card" style="margin-top:14px"><h2>Database backup</h2>'+
+     chk('Back up the database automatically','bken',(s.backup||{}).enabled!==false)+
+     '<div class="grid3">'+fld('Every (hours)','bkh',(s.backup||{}).every_hours||24,'number')+
+       fld('Keep daily','bkday',(s.backup||{}).keep_daily||7,'number')+
+       fld('Keep weekly','bkwk',(s.backup||{}).keep_weekly||4,'number')+'</div>'+
+     '<div style="display:flex;gap:8px;align-items:center">'+
+       '<button class="sm" onclick="backupNow()">Back up now</button>'+
+       '<span id="bkmsg" class="small muted"></span></div>'+
+     '<div class="small muted" id="bkstate" style="margin-top:8px"></div>'+
+   '</div>'+
+   '<div class="card" style="margin-top:14px"><h2>Fleet update</h2>'+
+     '<div class="small muted" style="margin-bottom:8px">Type a version and every branch that is '+
+     'older installs the newest signed release on its next report, even where automatic installs '+
+     'are off. Branches only accept releases signed with the NetSentinel key, so this console '+
+     'decides when, never what. Leave empty to let each site follow its own update setting.</div>'+
+     fld('Roll the fleet out to version','upver',(s.fleet_update||{}).version)+
+   '</div>'+
+   '<div class="card"><h2>Phone alerts (ntfy)</h2>'+
+     chk('Send incidents to my phone','pnben',(s.push||{}).enabled)+
+     '<div class="grid2">'+
+       '<div class="field"><label>Provider</label><select id="pnprov">'+
+         ['ntfy','custom'].map(function(v){return '<option '+((s.push||{}).provider===v?'selected':'')+'>'+v+'</option>';}).join('')+
+       '</select></div>'+
+       fld('ntfy topic (a long random word is your secret)','pntopic',(s.push||{}).topic)+'</div>'+
+     fld('Custom webhook URL (only for provider = custom)','pnurl',(s.push||{}).url)+
+     '<div class="small muted" style="margin-bottom:10px">Install the free ntfy app, subscribe to the '+
+     'same topic, and incidents arrive as notifications. No account, no SMS bill.</div>'+
+     '<button class="sm" onclick="testPush()">Send test notification</button> '+
+     '<span id="pnmsg" class="small muted"></span>'+
+   '</div>'+
+   '<div class="card" style="margin-top:14px"><h2>SIEM &amp; chat alerts</h2>'+
      chk('Forward incidents to a SIEM','sien',(s.siem||{}).enabled)+
      '<div class="grid2">'+fld('SIEM host','sih',(s.siem||{}).host)+
        fld('Port','sip',(s.siem||{}).port,'number')+'</div>'+
@@ -873,6 +981,31 @@ function num(id,dflt){ var v=document.getElementById(id); if(!v) return dflt;
   var n=parseFloat(v.value); return isNaN(n)?dflt:n; }
 function chkVal(id){ var v=document.getElementById(id); return v?v.checked:false; }
 function strVal(id){ var v=document.getElementById(id); return v?v.value:''; }
+function testSnmp(){
+  var el=document.getElementById('v3msg'); el.textContent='testing ...';
+  api('/api/snmp/test',{method:'POST',body:'{}'}).then(function(r){
+    el.textContent = r.ok ? ('works: '+(r.message||'ok')) : ('failed - '+(r.message||'?'));
+  });
+}
+function testTelegram(){
+  var el=document.getElementById('tgmsg'); el.textContent='sending ...';
+  api('/api/telegram/test',{method:'POST',body:'{}'}).then(function(r){
+    el.textContent = r.ok ? ('sent - ' + (r.message||'ok')) : ('failed - '+(r.message||'?'));
+  });
+}
+function backupNow(){
+  var el=document.getElementById('bkmsg'); el.textContent='backing up ...';
+  api('/api/backup/now',{method:'POST',body:'{}'}).then(function(r){
+    el.textContent = r.ok ? ('written: '+(r.name||'ok')+' ('+(r.kb||0)+' KB)') : ('failed - '+(r.message||'?'));
+    poll();
+  });
+}
+function testPush(){
+  var el=document.getElementById('pnmsg'); el.textContent='sending ...';
+  api('/api/push/test',{method:'POST',body:'{}'}).then(function(r){
+    el.textContent = r.ok ? 'sent - check your phone' : ('failed - '+(r.message||'?'));
+  });
+}
 function updateCard(cfg){
   var u=S.data.update||{}, when=u.last_check?new Date(u.last_check*1000).toLocaleString():'not yet';
   var state={idle:'waiting for the first check',checking:'checking ...',up_to_date:'up to date',
@@ -927,6 +1060,10 @@ function saveSettings(){
     webhook:{enabled:chkVal('when'),url:strVal('whu'),
       min_severity:(document.getElementById('whsev')||{}).value||'high'},
     auth:{enabled:chkVal('auen')},
+    push:{enabled:chkVal('pnben'),
+          provider:(document.getElementById('pnprov')||{}).value||'ntfy',
+          topic:strVal('pntopic'),url:strVal('pnurl'),
+          min_severity:((S.data&&S.data.settings&&S.data.settings.push)||{}).min_severity||'high'},
     siem:{enabled:chkVal('sien'),host:strVal('sih'),port:num('sip',514),
       proto:(document.getElementById('siproto')||{}).value||'udp',
       format:(document.getElementById('sifmt')||{}).value||'cef'},
@@ -934,6 +1071,16 @@ function saveSettings(){
     teams:{enabled:chkVal('ten'),webhook_url:strVal('teurl')},
     hosts:{cpu_warn_pct:num('hcpu',90),mem_warn_pct:num('hmem',92),
            disk_warn_pct:num('hdisk',90),stale_minutes:num('hstale',10)},
+    snmp_v3:{enabled:chkVal('v3en'),user:strVal('v3user'),
+             auth_proto:(document.getElementById('v3proto')||{}).value||'sha1',
+             port:num('v3port',161),auth_password:strVal('v3auth'),
+             priv_password:strVal('v3priv')},
+    wifi:{enabled:chkVal('wfen'),client_oid:strVal('wfoid')},
+    telegram:{enabled:chkVal('tgen'),token:strVal('tgtok'),
+              chat_ids:strVal('tgchats').split(',').map(function(x){return x.trim();}).filter(Boolean)},
+    backup:{enabled:chkVal('bken'),every_hours:num('bkh',24),
+            keep_daily:num('bkday',7),keep_weekly:num('bkwk',4)},
+    fleet_update:{version:strVal('upver').trim()},
     heartbeat:{enabled:chkVal('hben'),url:strVal('hburl'),interval_seconds:num('hbint',300)},
     update:{check:chkVal('upchk'),auto_install:document.getElementById('upauto')?chkVal('upauto'):true},
     access:{allow_cidrs:strVal('accallow').split(',').map(function(x){return x.trim();}).filter(Boolean),
@@ -1007,6 +1154,18 @@ function delUser(name){
 }
 
 // ------------------------------------------------------------------ drawer --
+function postureBlock(d){
+  var po=((S.data||{}).insights||{}).posture||{}, out='';
+  var mine=(po.findings||[]).filter(function(f){ return f.ip===d.ip; });
+  if(!mine.length) return '';
+  out='<div style="margin:14px 0 4px" class="small muted">SECURITY POSTURE</div>';
+  mine.forEach(function(f){
+    out+='<div class="kv"><span><span class="badge sev-'+esc(f.severity)+'">'+esc(f.severity)+
+      '</span> '+esc(f.text)+'</span></div>'+
+      '<div class="small muted" style="margin:2px 0 8px 6px">'+esc(f.advice)+'</div>';
+  });
+  return out;
+}
 function hostBlock(d){
   var h=d.host; if(!h) return '';
   function bar(pct){
@@ -1066,7 +1225,7 @@ function openDev(ip){
     '<div style="margin:12px 0 4px" class="small muted">OPEN PORTS</div><div class="ports">'+(ports||'none')+'</div>'+
     '<div style="margin:14px 0 4px" class="small muted">REMOTE ACCESS</div>'+acts+
     '<div style="margin:14px 0 4px" class="small muted">LATENCY (last polls)</div>'+spark(d.history)+
-    hostBlock(d);
+    hostBlock(d)+postureBlock(d);
   document.getElementById('drawer').classList.add('open');
 }
 function doRemote(ip,action){
@@ -1232,6 +1391,39 @@ FORM_TOTP = """<form method="post" action="/login" id="loginform">
     </form>"""
 
 
+def _apply_scope(data, scoped):
+    """A hotel manager sees their property and nothing else."""
+    try:
+        want = {x.strip().lower() for x in scoped}
+        sites = data.get("sites") or {}
+        rows = [b for b in (sites.get("branches") or [])
+                if (b.get("kind") or "hotel") == "hotel"
+                and (b.get("name") or "").strip().lower() in want]
+        totals = {"sites": len(rows), "hotels": len(rows),
+                  "online": sum(1 for r in rows if r.get("online")),
+                  "devices": sum((r.get("devices") or 0) for r in rows),
+                  "incidents": sum(len(r.get("incidents") or []) for r in rows),
+                  "critical": sum(1 for r in rows for i in (r.get("incidents") or [])
+                                  if (i.get("severity") == "critical")),
+                  "down_links": sum(1 for r in rows if (r.get("gateway") or "") == "down")}
+        data["sites"] = dict(sites, branches=rows, totals=totals)
+        # the corporate office's own devices, traffic and incidents are not theirs to see
+        data["devices"] = []
+        data["open_incidents"] = []
+        data["incidents"] = []
+        data["hosts"] = []
+        data["traffic"] = dict(data.get("traffic") or {}, top=[], total_down_bps=0,
+                               total_up_bps=0, source="scoped")
+        data["insights"] = {"anomalies": [], "forecasts": [],
+                            "posture": {"score": 100, "findings": [], "counts": {}, "total": 0}}
+        data["scope"] = {"sites": scoped,
+                         "note": "You are signed in for " + ", ".join(scoped) +
+                                 " - only those locations are shown."}
+    except Exception:
+        pass
+    return data
+
+
 def login_page(error="", sso=None, pending="", who=""):
     err = f'<div class="err" id="errbox">{error}</div>' if error else '<div id="errbox"></div>'
     block = ""
@@ -1242,7 +1434,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = (FORM_TOTP.format(who=who, pending=pending) if pending else FORM_PASSWORD)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.17.0"))
+            .replace("__VERSION__", "1.22.0"))
 
 
 def app_page(version):
@@ -1303,7 +1495,8 @@ class Handler(BaseHTTPRequestHandler):
         sess = auth.session(self._cookie())
         if not sess:
             return None
-        return {"user": sess["user"], "role": sess["role"], "anonymous": False}
+        return {"user": sess["user"], "role": sess["role"], "anonymous": False,
+                "sites": sess.get("sites") or []}
 
     def _send(self, code, body, ctype="application/json; charset=utf-8", extra=None):
         if isinstance(body, str):
@@ -1407,7 +1600,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(401, login_page(f"Sign-in failed: {exc}"),
                                   "text/html; charset=utf-8")
             token = auth.login_sso(email, role, self.session_hours,
-                                   provider=self.oidc_client.issuer)
+                                   provider=self.oidc_client.issuer,
+                                   sites=(store.user_record(email) or {}).get("sites") or [])
             store.add_event("auth", "info", f"SSO sign-in: {email} as {role}")
             cookie = (f"ns_session={token}; Path=/; HttpOnly; SameSite=Strict"
                       + ("; Secure" if self.tls_active else ""))
@@ -1439,6 +1633,9 @@ class Handler(BaseHTTPRequestHandler):
             upd = getattr(self.scanner, "updater", None)
             data["update"] = upd.snapshot() if upd else None
             role = user.get("role") or "viewer"
+            scoped = [x for x in (user.get("sites") or []) if x]
+            if scoped and role != "admin":
+                data = _apply_scope(data, scoped)
             data["auth"] = {
                 "enabled": self.auth_enabled, "user": user["user"], "role": role,
                 "role_label": auth.role_label(role),
@@ -1525,6 +1722,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v1/hosts":
             return self._json({"count": len(scanner.snapshot()["hosts"]),
                                "hosts": scanner.snapshot()["hosts"]})
+        if path == "/api/v1/insights":
+            return self._json(scanner.insights())
         if path == "/api/v1/health":
             return self._json({"health": scanner.snapshot()["health"],
                                "version": self.version,
@@ -1575,7 +1774,8 @@ class Handler(BaseHTTPRequestHandler):
                 auth.finish_second_factor(pending)
                 auth.clear_failures(self.client_ip)
                 role = rec.get("role") or "viewer"
-                token = auth.login_sso(who, role, self.session_hours, provider="local+totp")
+                token = auth.login_sso(who, role, self.session_hours, provider="local+totp",
+                                       sites=rec.get("sites") or [])
                 store.add_event("auth", "info", f"sign-in with 2FA: {who} as {role}")
                 return self._send(302, b"", "text/plain",
                                   {"Location": "/", "Set-Cookie":
@@ -1604,7 +1804,8 @@ class Handler(BaseHTTPRequestHandler):
                                   "text/html; charset=utf-8")
 
             auth.clear_failures(self.client_ip)
-            token = auth.login_sso(username, user["role"], self.session_hours, provider="local")
+            token = auth.login_sso(username, user["role"], self.session_hours, provider="local",
+                                   sites=(store.user_record(username) or {}).get("sites") or [])
             store.add_event("auth", "info", f"sign-in: {username} as {user['role']}")
             return self._send(302, b"", "text/plain",
                               {"Location": "/", "Set-Cookie":
@@ -1683,6 +1884,48 @@ class Handler(BaseHTTPRequestHandler):
             self.scanner.audit(who, "settings changed",
                                ", ".join(sorted(payload.keys()))[:120])
             return self._json({"ok": True})
+        if path == "/api/snmp/test":
+            if not self._need("settings", user):
+                return
+            from . import snmpv3
+            cfg = settings.load().get("snmp_v3") or {}
+            if not (cfg.get("enabled") and cfg.get("user")):
+                return self._json({"ok": False, "message": "enable it and add a user first"})
+            host = "127.0.0.1"
+            ok, msg = snmpv3.probe(host, cfg.get("user"), cfg.get("auth_password") or "",
+                                   cfg.get("priv_password") or "",
+                                   cfg.get("auth_proto") or "sha1",
+                                   port=int(cfg.get("port") or 161))
+            return self._json({"ok": ok, "message": msg})
+        if path == "/api/backup/now":
+            if not self._need("settings", user):
+                return
+            from . import backup as backup_mod
+            try:
+                path_written, size = backup_mod.make()
+                return self._json({"ok": True, "name": os.path.basename(path_written),
+                                   "kb": round(size / 1024)})
+            except Exception as exc:
+                return self._json({"ok": False, "message": str(exc)[:160]})
+        if path == "/api/telegram/test":
+            if not self._need("settings", user):
+                return
+            from . import telegram as tg_mod
+            cfg = settings.load()
+            tg = cfg.get("telegram") or {}
+            chats = tg.get("chat_ids") or []
+            if not (tg.get("enabled") and tg.get("token") and chats):
+                return self._json({"ok": False, "message": "enable it, add the token and a chat id"})
+            ok, msg = tg_mod.send(tg["token"], chats[0],
+                                  "NetSentinel test message - the bot is wired up.")
+            return self._json({"ok": ok, "message": msg})
+        if path == "/api/push/test":
+            if not self._need("settings", user):
+                return
+            from . import push as push_mod
+            ok, msg = push_mod.send(settings.load(), "Test from NetSentinel",
+                                    "Phone alerts are working.", "info")
+            return self._json({"ok": ok, "message": msg})
         if path in ("/api/update/check", "/api/update/install"):
             if not self._need("settings", user):
                 return
@@ -1726,7 +1969,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "message": "role must be viewer, engineer or admin"})
             if len(name) < 2 or len(password) < 6:
                 return self._json({"ok": False, "message": "user name (2+) and password (6+) required"})
-            ok = store.create_user(name, password, role)
+            ok = store.create_user(name, password, role,
+                                   sites=payload.get("sites") or [])
             store.add_event("auth", "info", f"user {name} created as {role} by {who}")
             return self._json({"ok": ok})
         if path == "/api/hub/site":
@@ -1910,7 +2154,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.17.0", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.22.0", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

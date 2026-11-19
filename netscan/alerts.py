@@ -13,7 +13,7 @@ import threading
 import urllib.request
 from email.message import EmailMessage
 
-from . import diagnose, store
+from . import diagnose, push, store
 
 _send_lock = threading.Lock()
 
@@ -347,6 +347,16 @@ def notify_incident(cfg, inc, log=None):
             if log:
                 log(f"SIEM forward {'sent' if ok else 'failed'}: {msg}")
 
+        pcfg = cfg.get("push") or {}
+        if pcfg.get("enabled") and _severity_ok(severity, pcfg.get("min_severity")):
+            title = f"{severity.upper()}: {inc.get('title', 'incident')}"
+            body = (f"{inc.get('device_name', '')} ({inc.get('device_ip', '')})\n"
+                    f"{(inc.get('diagnosis') or {}).get('root_cause', '')[:300]}")
+            ok, msg = push.send(cfg, title, body, severity)
+            results["push"] = msg
+            if log:
+                log(f"phone push {'sent' if ok else 'failed'}: {msg}")
+
         for name, sender in (("slack", send_slack), ("teams", send_teams)):
             channel = cfg.get(name) or {}
             if channel.get("enabled") and _severity_ok(severity, channel.get("min_severity")):
@@ -380,4 +390,8 @@ def test_channels(cfg):
         if (cfg.get(name) or {}).get("enabled"):
             ok, msg = sender(cfg, sample, "test")
             out[name] = {"ok": ok, "message": msg}
+    if (cfg.get("push") or {}).get("enabled"):
+        ok, msg = push.send(cfg, "Test from NetSentinel", "Phone alerts are working.",
+                            "info")
+        out["push"] = {"ok": ok, "message": msg}
     return out

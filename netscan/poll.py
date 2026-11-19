@@ -148,6 +148,12 @@ class Poller(threading.Thread):
                         results[ip] = (0.0, 100.0, False)
 
         now = time.time()
+        if now - getattr(self, "_last_wifi", 0) > 300:
+            self._last_wifi = now
+            try:
+                self.scanner.refresh_wifi()
+            except Exception:
+                pass
         self.polls += 1
         self.last_poll_ts = now
         states = {}
@@ -160,6 +166,7 @@ class Poller(threading.Thread):
                                  "type": dev.get("type"), "monitored": True}
             self._apply_to_device(dev["ip"], latency, loss, state, cfg)
             store.add_sample(dev["ip"], latency, loss, state)
+            self._observe(dev, latency, loss)
 
         internet_states = []
         for target in internet:
@@ -209,6 +216,25 @@ class Poller(threading.Thread):
         if (loss >= th.get("loss_warn_pct", 3) or latency >= th.get("latency_warn_ms", 150)):
             return "degraded"
         return "up"
+
+    def _observe(self, dev, latency, loss):
+        """Feed the history that makes anomaly detection and forecasting possible."""
+        try:
+            eng = getattr(self.scanner, "anomaly", None)
+            host = dev.get("host") or {}
+            if host and dev.get("ip"):
+                disk = 0.0
+                for d in host.get("disks") or []:
+                    disk = max(disk, d.get("used_pct") or 0)
+                store.add_host_sample(dev["ip"], host.get("cpu_pct"),
+                                      host.get("mem_pct"), disk)
+            if eng is not None:
+                name = (dev.get("label") or dev.get("hostname") or dev.get("ip"))
+                found = eng.check_device(dev["ip"], name, latency, loss)
+                if found:
+                    eng.record(found)
+        except Exception:
+            pass
 
     def _apply_to_device(self, ip, latency, loss, state, cfg):
         with self.scanner.lock:

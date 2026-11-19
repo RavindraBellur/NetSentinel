@@ -110,12 +110,13 @@ def finish_second_factor(token):
         return rec["user"] if rec else ""
 
 
-def login_sso(username, role, hours=12, provider=""):
+def login_sso(username, role, hours=12, provider="", sites=None):
     """Create a session for a user already authenticated by the identity provider."""
     token = secrets.token_urlsafe(32)
     with _lock:
         _sessions[token] = {"user": username, "role": role,
-                            "expires": _now() + hours * 3600, "provider": provider}
+                            "expires": _now() + hours * 3600, "provider": provider,
+                            "sites": [x for x in (sites or []) if x]}
     return token
 
 

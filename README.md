@@ -1,4 +1,5 @@
-# NetSentinel 1.18
+# NetSentinel 1.22
+
 
 A network operations console for a small or mid-size office that runs on one PC, on
 your own network, with no cloud account and no agent on the devices. It answers four
@@ -19,7 +20,44 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 
 ---
 
-## What's new in 1.18 — it updates itself
+## What's new in 1.22 — one line again: 1.21 features + signed auto-update
+
+1.19–1.21 were developed as a renamed copy ("Prahari"); 1.18 added signed automatic updates.
+1.22 brings both together under the NetSentinel name, so every install — including 1.18 —
+updates itself to it.
+
+| Change | Why |
+|---|---|
+| **Everything from 1.19, 1.20 and 1.21** | Anomaly detection, capacity forecasting, ntfy phone alerts, security posture, nightly database backup, per-site role scoping, Telegram bot, SNMPv3, Wi-Fi health. |
+| **Fleet update now uses signed releases** | The hub only says *which version* the branches should run (Settings → *Fleet update*); each branch installs the newest release signed with the NetSentinel key. Before, the hub supplied a URL and hash itself, so anyone with access to the hub could run code on every branch — and it could not update the single-file exe at all. |
+| **Fixes** | `--agent` no longer crashes on start; Windows batch files have Windows line endings again; the GitHub build works. |
+
+## What was new in 1.21 — SNMPv3 and real Wi-Fi health
+
+| Feature | What it does |
+|---|---|
+| **SNMPv3 (USM)** | Auth HMAC-MD5/SHA-1/SHA-256/SHA-512, privacy AES-128-CFB, automatic engine discovery, key localisation per RFC 3414. **Verified against the RFC 3414 A.3 test vectors** (`maplesyrup` → the published Ku values) and against a mock agent for the full encrypted handshake. Community strings stop crossing the wire. |
+| **Wi-Fi health** | Standard IEEE802dot11 counters per radio give **retry rate** and **failure rate** — the numbers that match what guests complain about. Above 10% retries a radio is "fair", above 25% "poor", and the Overview says so. Works on any AP that speaks SNMP. |
+
+## What was new in 1.20 — safe to run a hundred of them
+
+| Feature | What it does |
+|---|---|
+| **Nightly database backup** | A consistent copy of the SQLite file every 24 h (SQLite backup API, so it is safe while running), verified with `integrity_check`, keeping 7 daily + 4 weekly copies. Settings → *Database backup*, plus a **Back up now** button. |
+| **Fleet update** | The hub tells branches which version to run. *(Since 1.22 branches install only signed releases — see above.)* |
+| **Per-site role scoping** | A user can be tied to named locations. A hotel GM signs in and sees only their property — no corporate devices, traffic or incidents — with a line saying so. Admins see everything. |
+| **Telegram bot** | `/status`, `/incidents`, `/ack INC-…`, `/sites` from your phone. Only chat ids you list may use it; anyone else is told their id so you can add it deliberately. |
+
+## What was new in 1.19 — it predicts, and it grades security
+
+| Feature | What it does |
+|---|---|
+| **Anomaly detection** | A mean and spread per device **per hour of day** (14 days, EWMA). A reading is flagged only when it is both unusual for that hour *and* materially bad — "Kitchen AP: latency 90 ms is 6.7σ above the usual 5 ms for this hour". Every alert carries the baseline it was compared against. |
+| **Capacity forecasting** | A straight line through the last 14 days of agent samples: "disk on BILLING-SRV is 88% and rising 1.2%/day — full in about 10 days", severity rising as the date approaches. |
+| **Phone alerts (ntfy.sh)** | Free push to your phone: install the ntfy app, pick a topic, done. No account, no SMS bill, no per-message cost. Also posts to any custom webhook. |
+| **Security posture** | Grades what the scan already saw: Telnet open, admin page on plain HTTP, default SNMP community, CCTV recorder with a web admin page, RDP/SMB/FTP exposed — plus the console itself (no TLS, no allow-list, no 2FA, no heartbeat). Each finding carries a one-line fix, and the network gets a score out of 100. |
+
+## What was new in 1.18 — it updates itself
 
 | Change | What it does |
 |---|---|
@@ -348,6 +386,77 @@ sends nothing off the machine. (A key-based AI layer is easy to add later if you
 
 ---
 
+## 3b. Predictions, and why they beat thresholds
+
+A fixed threshold ("latency over 150 ms is bad") is wrong in both directions: it misses a
+device that has doubled but stayed under the limit, and it cries wolf on a slow-but-normal
+microwave link at peak hour. NetSentinel keeps, for each device, a separate mean and spread for
+**each hour of the day** from 14 days of samples, then scores each new reading against the
+profile for *that hour*. A reading is reported only when it is at least 3σ out **and**
+materially bad (≥25 ms, ≥5% loss) — which is why the alert reads "12σ above the usual 5 ms"
+rather than "high latency".
+
+Forecasting is a least-squares line through the last 14 days of disk/memory samples from the
+host agents. It only forecasts *upward* trends above 50%, and it says nothing at all when the
+slope is flat — silence is the correct answer most of the time.
+
+Both live in the Overview as the **Predictions** card, in `GET /api/v1/insights`, and as
+events in the log. No ML library, no training, no data leaving the machine.
+
+## 3b2. SNMPv3, and why it was worth the trouble
+
+v2c puts the community string in every packet in clear text, which any security baseline
+prohibits and any guest on the Wi-Fi can capture. v3 signs and encrypts:
+
+```
+Settings -> SNMPv3:  user, auth password, auth protocol, privacy password
+```
+
+With auth+priv set, every `get`/`walk` in the console goes through USM instead of v2c —
+nothing else changes, and the posture card stops reporting `snmp-v2c`. Key localisation is
+the RFC 3414 algorithm (one hash over the password repeated to 1 MB, then the engine-id
+mix), checked against the published vectors for `maplesyrup`:
+
+```
+MD5  -> 526f5eed9fcce26f8964c2930787d82b
+SHA1 -> 6695febc9288e36282235fc7151f128497b38f3f
+```
+
+DES privacy is deliberately unsupported (deprecated by every vendor); AES-128 is what
+current switches and APs offer.
+
+## 3b3. Wi-Fi health — the number that matches the complaint
+
+Guests do not complain about "packet loss", they complain that the Wi-Fi is slow. The honest
+signal is the retry rate from the standard IEEE802dot11 counters:
+
+| Retry rate | Meaning |
+|---|---|
+| under 10% | healthy |
+| 10-25% | fair - interference or too many clients per radio |
+| over 25% | poor - this is the AP people are complaining about |
+
+Rates come from two readings of the cumulative counters, so the first pass only establishes
+a baseline. Radios are read every five minutes by the poller and shown on the Overview and in
+`GET /api/v1/insights`.
+
+## 3c. Security posture — the findings that matter in a hotel
+
+`POST /api/v1/insights` and the Overview card grade the network 0-100 and list findings with
+a fix for each:
+
+| Rule | Why it matters |
+|---|---|
+| `cctv-admin-exposed` | A recorder whose web page answers on port 80 with the factory password is how hotel cameras end up on the internet. |
+| `telnet-open` | Passwords in clear text on switches and APs. |
+| `admin-http-only` | Device admin over plain HTTP — anyone on the guest Wi-Fi can sniff the session. |
+| `snmp-default-community` | `public` means anyone can read the device's whole configuration and port counters. |
+| `rdp-open`, `smb-open`, `ftp-open` | Lateral movement paths. |
+| `console-no-tls`, `console-no-allowlist`, `console-no-2fa`, `console-no-heartbeat` | The console grading itself, so you see your own gaps next to the network's. |
+
+Nothing is exploited: every finding comes from ports, banners and SNMP answers the scan
+already collected.
+
 ## 4. "Who is using the internet" — the honest part
 
 A PC cannot see other devices' traffic by itself. NetSentinel supports three collectors
@@ -541,6 +650,23 @@ and a site with no list fell back to the main list.
 
 **If the hotel's own internet is down**, its console cannot send anything — that is what the
 heartbeat (healthchecks.io) is for, and why the hub's lost-contact mail matters.
+
+## 6f. Upgrading a hundred branches
+
+Branches sit behind hotel broadband and only dial outwards, so the hub cannot push to them.
+Instead the hub *answers* each branch report with the build it should be running:
+
+1. Publish a signed release as usual (tag, then `tools/sign_release.py`, see 1.18 above).
+2. On the hub: Settings → **Fleet update** — type the version, e.g. `1.22.1`, and save.
+3. Each older branch, on its next report, installs the newest signed release from GitHub and
+   restarts — even if automatic installs are off on that branch. A bad signature or checksum is
+   refused; a version that will not start is rolled back automatically.
+4. The Locations table shows each branch's version, so you can watch the fleet converge.
+
+Branches with automatic installs on (the default) update within 6 hours anyway; the hub setting
+is for rolling out *now*, or for fleets where automatic installs are switched off.
+On a site that must never self-update, turn off *Install them automatically* (Settings → Updates)
+and set `branch.auto_update: false`.
 
 ## 6e. Capacity: what 50-100 hotels actually costs
 

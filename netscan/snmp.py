@@ -139,8 +139,48 @@ def _parse(data: bytes):
         return None
 
 
+def _v3_config():
+    """SNMPv3 credentials from settings, or None when v3 is off."""
+    try:
+        from . import settings as _settings
+        cfg = (_settings.load().get("snmp_v3") or {})
+        if cfg.get("enabled") and cfg.get("user") and cfg.get("auth_password"):
+            return cfg
+    except Exception:
+        pass
+    return None
+
+
+def _v3_session(host, timeout=2.0):
+    """Cached session per device - discovery is expensive, so it is reused."""
+    from . import snmpv3
+    cfg = _v3_config()
+    if not cfg:
+        return None
+    cache = _v3_session.cache
+    entry = cache.get(host)
+    now = __import__("time").time()
+    if entry and now - entry[0] < 300:
+        return entry[1]
+    session = snmpv3.V3Session(host, cfg.get("user"), cfg.get("auth_password"),
+                               cfg.get("priv_password") or "",
+                               cfg.get("auth_proto") or "sha1", timeout=timeout,
+                               port=int(cfg.get("port") or 161))
+    cache[host] = (now, session)
+    return session
+
+
+_v3_session.cache = {}
+
+
 def get(host: str, oids, community: str = "public", timeout: float = 1.0, retries: int = 1):
     """SNMP GET one or more OIDs. Returns list of (oid, tag, value) or None."""
+    session = _v3_session(host, timeout + 1)
+    if session is not None:
+        try:
+            return session.get(oids)
+        except Exception:
+            return None
     if isinstance(oids, str):
         oids = [oids]
     oids = list(oids)
@@ -169,6 +209,12 @@ def get(host: str, oids, community: str = "public", timeout: float = 1.0, retrie
 
 def walk(host: str, base: str, community: str = "public", timeout: float = 1.0, max_rows: int = 3000):
     """GETNEXT walk below `base`. Returns list of (oid, tag, value)."""
+    session = _v3_session(host, timeout + 1)
+    if session is not None:
+        try:
+            return session.walk(base, max_rows)
+        except Exception:
+            return []
     rows = []
     current = base
     while len(rows) < max_rows:

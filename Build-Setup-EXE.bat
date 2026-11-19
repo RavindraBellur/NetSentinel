@@ -11,7 +11,7 @@ setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 title NetSentinel - build setup exe
 
-set "VER=1.17.0"
+set "VER=1.22.0"
 set "DIST=%CD%\dist"
 set "STAGE=%DIST%\staging"
 set "OUT=%DIST%\NetSentinel-Setup-%VER%.exe"

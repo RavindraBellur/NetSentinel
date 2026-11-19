@@ -9,7 +9,8 @@
 block_cipher = None
 
 HIDDEN = [
-    "netscan.agent", "netscan.alerts", "netscan.apitokens", "netscan.auth",
+    "netscan.agent", "netscan.anomaly", "netscan.posture", "netscan.push", "netscan.backup",
+    "netscan.telegram", "netscan.upgrade", "netscan.snmpv3", "netscan.wifi", "netscan.alerts", "netscan.apitokens", "netscan.auth",
     "netscan.certs", "netscan.diagnose", "netscan.discovery", "netscan.fingerprint",
     "netscan.fleet", "netscan.heartbeat", "netscan.monitor", "netscan.netflow",
     "netscan.netguard", "netscan.netinfo", "netscan.oidc", "netscan.oui",

@@ -4,3 +4,5 @@ build/
 *.pem
 *.key
 .venv/
+build_pyz/
+dist/NetSentinel.app/

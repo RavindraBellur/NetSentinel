@@ -67,6 +67,7 @@ IS_WINDOWS = platform.system() == "Windows"
 UPDATE_DIR = os.path.join(CONFIG_DIR, "update")
 PENDING = os.path.join(UPDATE_DIR, "pending.json")
 BAD = os.path.join(UPDATE_DIR, "bad.json")
+CURRENT = None  # the running Updater, so a hub request (upgrade.py) can trigger it
 
 
 def vtuple(v):
@@ -441,6 +442,8 @@ class Updater:
             self._kick.wait(CHECK_EVERY)
 
     def start(self):
+        global CURRENT
+        CURRENT = self
         threading.Thread(target=self.loop, daemon=True, name="updater").start()
         return self
 

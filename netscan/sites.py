@@ -126,7 +126,7 @@ class BranchReporter(threading.Thread):
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 ok = 200 <= resp.status < 300
-                body = resp.read(200).decode("utf-8", "replace")
+                body = resp.read(4000).decode("utf-8", "replace")
         except urllib.error.HTTPError as exc:
             self.last_error = f"hub refused the report: HTTP {exc.code}"
             return False
@@ -137,6 +137,12 @@ class BranchReporter(threading.Thread):
             self.last_ok = time.time()
             self.sent += 1
             self.last_error = ""
+            try:
+                import json as _json
+                from . import upgrade as upgrade_mod
+                upgrade_mod.pending_update(_json.loads(body or "{}"), url, log=self.log)
+            except Exception as exc:
+                self.last_error = f"update check failed: {exc}"[:140]
         else:
             self.last_error = body[:160]
         return ok
