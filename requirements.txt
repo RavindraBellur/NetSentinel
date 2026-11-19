@@ -5,7 +5,11 @@
 # HTTPS certificate generation + OpenID Connect token signature checks (recommended)
 cryptography>=41
 
-# passive per-device traffic counting (needs Npcap installed on Windows)
+# Claude AI incident diagnosis and "Ask AI" (only used when switched on in Settings)
+anthropic>=0.125
+
+# passive per-device traffic counting (needs Npcap installed on Windows).
+# GPL-2.0: installed on your own PC for source installs only - never bundled into NetSentinel.exe.
 scapy>=2.5
 
 # throughput of this PC's own network cards

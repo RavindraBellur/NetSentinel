@@ -8,6 +8,7 @@ own backup API so it is consistent while the console is running.
 from __future__ import annotations
 
 import os
+import shutil
 import sqlite3
 import threading
 import time
@@ -97,6 +98,86 @@ def listing(limit=20):
         except OSError:
             continue
     return out
+
+
+def verify(path):
+    """Is this file a usable NetSentinel database?"""
+    try:
+        conn = sqlite3.connect(path)
+        ok = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        conn.close()
+        return (ok == "ok"), sorted(tables)
+    except Exception as exc:
+        return False, [str(exc)[:80]]
+
+
+def restore(path, confirm=False):
+    """Put a backup back in place. The current database is kept first.
+
+    Returns (ok, message). Nothing happens unless confirm is True - a restore overwrites
+    the live database, and that is not something to do by accident.
+    """
+    if not confirm:
+        return False, "refusing to overwrite the live database without --confirm"
+    if not os.path.exists(path):
+        return False, f"{path} does not exist"
+    ok, tables = verify(path)
+    if not ok:
+        return False, f"that file is not a healthy database: {tables}"
+    if "incidents" not in tables or "samples" not in tables:
+        return False, "that file is a database, but not a NetSentinel one"
+    stamp = _stamp()
+    current = store.DB_PATH
+    keep = f"{current}.pre-restore-{stamp}"
+    try:
+        if os.path.exists(current):
+            # Copy the live database WITH its recent changes: SQLite's backup API reads through
+            # the write-ahead log, so nothing committed is lost from the safety copy.
+            _copy_db(current, keep)
+        # Write the backup into the live file through SQLite as well; this also clears the
+        # old write-ahead log, so stale pages cannot be replayed over the restored data.
+        _copy_db(path, current)
+        ok2, tables2 = verify(current)
+        if not ok2:
+            _copy_db(keep, current)
+            return False, f"the restored file failed its check - rolled back to {keep}"
+        return True, (f"restored {os.path.basename(path)}; the previous database was kept "
+                      f"as {os.path.basename(keep)}. Restart the console to use it.")
+    except Exception as exc:
+        return False, f"{exc.__class__.__name__}: {exc}"
+
+
+def _copy_db(src_path, dst_path):
+    """Consistent copy of one SQLite database onto another (creates dst if needed)."""
+    src = sqlite3.connect(src_path)
+    try:
+        dst = sqlite3.connect(dst_path)
+        try:
+            src.backup(dst)
+            dst.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+
+def prune_restores(keep=3):
+    """Remove old pre-restore copies."""
+    try:
+        names = sorted(n for n in os.listdir(os.path.dirname(store.DB_PATH))
+                       if ".pre-restore-" in n)
+    except FileNotFoundError:
+        return []
+    removed = []
+    for name in names[:-keep] if keep else names:
+        try:
+            os.remove(os.path.join(os.path.dirname(store.DB_PATH), name))
+            removed.append(name)
+        except OSError:
+            pass
+    return removed
 
 
 def status():

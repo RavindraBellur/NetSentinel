@@ -9,7 +9,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import (alerts, anomaly, auth, backup as backup_mod, discovery, fingerprint,
                heartbeat as hb_mod, monitor, netflow, netinfo,
-               posture, telegram as telegram_mod, wifi as wifi_mod,
+               defaults as defaults_mod, ports as ports_mod, posture,
+               remediation as remediation_mod,
+               telegram as telegram_mod,
+               topology as topology_mod, vault as vault_mod,
+               wifi as wifi_mod,
                oui, poll, remote, settings, sites, store, syslogrx, wan)
 
 
@@ -54,11 +58,14 @@ class Scanner:
         self.heartbeat = None
         self._outbox = None
         self.backup = None
+        self.report_mailer = None
         self.telegram = None
         self._host_events = {}
         self.anomaly = anomaly.AnomalyEngine(log=self.log)
         self.wifi_state = {"measured": [], "poor": [], "fair": [], "access_points": 0,
                            "ts": 0}
+        self.topology = {"nodes": [], "links": [], "stats": {}, "ts": 0}
+        self.defaults_state = {"state": "idle", "checked": 0, "findings": [], "ts": 0}
         self._scan_thread = None
         self._snmp_poller = None
         self._capture = None
@@ -107,6 +114,9 @@ class Scanner:
                         pass
             self._outbox = _th.Thread(target=_flush_loop, daemon=True, name="outbox")
             self._outbox.start()
+        if self.report_mailer is None and (settings.get("sla_email") or {}).get("enabled"):
+            self.report_mailer = scheduled_mod.ReportScheduler(log=self.log)
+            self.report_mailer.start()
         if self.backup is None and (settings.get("backup") or {}).get("enabled", True):
             self.backup = backup_mod.BackupThread(log=self.log)
             self.backup.start()
@@ -144,7 +154,7 @@ class Scanner:
 
     def stop_monitors(self):
         for thread in (self.poller, self.flow, self.syslog, self.wan_watcher, self.heartbeat,
-                       self.backup, self.telegram,
+                       self.backup, self.telegram, self.report_mailer,
                        self.branch_reporter, self.lost_contact,
                        self._snmp_poller, self._capture, self._local_rate):
             if thread is not None:
@@ -249,6 +259,48 @@ class Scanner:
         rows.sort(key=lambda r: (-len(r["warnings"]), r["host"] or ""))
         return rows
 
+    def check_default_passwords(self):
+        """Run the factory-password check in the background (it takes seconds per device)."""
+        if self.defaults_state.get("state") == "running":
+            return self.defaults_state
+        cfg = settings.load()
+        ok, why = defaults_mod.allowed(cfg, "0.0.0.0")     # config-level guards only
+        if not ((cfg.get("defaults_check") or {}).get("enabled")
+                and (cfg.get("defaults_check") or {}).get("i_own_this_network")):
+            self.defaults_state = {"state": "refused", "checked": 0, "findings": [],
+                                   "ts": int(time.time()), "why": why}
+            return self.defaults_state
+
+        def worker():
+            self.defaults_state = {"state": "running", "checked": 0, "findings": [],
+                                   "ts": int(time.time())}
+            try:
+                with self.lock:
+                    devices = list(self.devices.values())
+                result = defaults_mod.summary(devices, cfg)
+                self.defaults_state = {"state": "done", "checked": result["checked"],
+                                       "findings": result["findings"],
+                                       "ts": int(time.time())}
+                for f in result["findings"]:
+                    if f["severity"] == "critical":
+                        store.add_event("defaults", "high", f["text"])
+            except Exception as exc:
+                self.defaults_state = {"state": "error", "checked": 0, "findings": [],
+                                       "ts": int(time.time()), "why": str(exc)[:140]}
+
+        threading.Thread(target=worker, daemon=True, name="defaults-check").start()
+        return self.defaults_state
+
+    def refresh_topology(self):
+        """Walk LLDP/CDP on the switches and APs to rebuild the map."""
+        try:
+            with self.lock:
+                devices = list(self.devices.values())
+            self.topology = topology_mod.build(devices)
+        except Exception as exc:
+            self.topology = dict(self.topology, error=str(exc)[:120])
+        return self.topology
+
     def refresh_wifi(self):
         """Called by the poller every few minutes: read the APs' dot11 counters."""
         try:
@@ -272,6 +324,14 @@ class Scanner:
         except Exception as exc:
             out["error"] = str(exc)[:120]
         out["wifi"] = self.wifi_state
+        out["topology"] = self.topology
+        try:
+            with self.lock:
+                devices = list(self.devices.values())
+            out["exposure"] = ports_mod.exposure(devices)
+        except Exception as exc:
+            out["exposure"] = {"findings": [], "counts": {}, "total": 0, "error": str(exc)[:120]}
+        out["defaults"] = self.defaults_state
         try:
             with self.lock:
                 devices = list(self.devices.values())
@@ -351,6 +411,12 @@ class Scanner:
             "heartbeat": self.heartbeat.state if self.heartbeat else {"enabled": False},
             "outbox": store.outbox_stats(),
             "backup": backup_mod.status(),
+            "sla_email": {"enabled": bool((settings.get("sla_email") or {}).get("enabled")),
+                          "last_sent": (settings.get("sla_email") or {}).get("last_sent", ""),
+                          "error": (self.report_mailer.last_error
+                                    if self.report_mailer else "")},
+            "vault": vault_mod.status(),
+            "remediation": remediation_mod.status(),
             "telegram": ({"enabled": True, "handled": self.telegram.handled,
                           "error": self.telegram.last_error} if self.telegram
                          else {"enabled": False}),
@@ -492,7 +558,7 @@ class Scanner:
         return ok
 
     def update_settings(self, patch):
-        cfg = settings.save(patch or {})
+        cfg = settings.save(settings.drop_masked(patch or {}))
         # thresholds and intervals apply from the next poll; restart the flow/syslog
         # listeners if their ports changed
         for attr, section in (("flow", "netflow"), ("syslog", "syslog")):

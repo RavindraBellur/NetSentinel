@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import subprocess
 import threading
 import time
@@ -164,7 +165,8 @@ APP_JS = r"""
 var S = {data:null, tab:(location.hash||'#overview').slice(1), dev:{q:'',f:'all',mon:false},
          inc:null, draw:null, trafficTab:'now'};
 var TABS=[['overview','Overview','&#9635;'],['devices','Devices','&#9776;'],
-          ['incidents','Incidents','&#9888;'],['traffic','Traffic','&#8599;'],
+          ['incidents','Incidents','&#9888;'],['topology','Topology','&#9700;'],['exposure','Exposure','&#9937;'],
+          ['traffic','Traffic','&#8599;'],
           ['reports','Reports','&#9783;'],['locations','Locations','&#8853;'],
           ['users','Users','&#9787;'],
           ['events','Events','&#9776;'],
@@ -242,6 +244,7 @@ function head(){
       '<a class="pill" href="#settings" title="Settings → Updates">'+
       (d.update.status==='available'?'update '+esc(d.update.latest)+' available':'updating to '+esc(d.update.latest)+' ...')+
       '</a>':'')+
+    (d.ai&&d.ai.enabled?'<button class="sm" onclick="openAsk()">Ask AI</button>':'')+
     (can('scan')?'<button class="sm" onclick="rescan()">Rescan</button>':'')+
     (d.auth&&d.auth.enabled&&d.auth.user?
       '<span class="pill" title="signed in">'+esc(d.auth.user)+
@@ -468,6 +471,120 @@ function viewIncidents(){
 }
 
 // ----------------------------------------------------------------- traffic --
+function defaultsBlock(){
+  var df=((S.data||{}).insights||{}).defaults||{}, fs=df.findings||[];
+  var head='<div style="margin-top:16px" class="small muted">FACTORY PASSWORDS</div>';
+  if(df.state==='refused') return head+'<div class="note" style="margin-top:6px">Off: '+
+    esc(df.why||'enable it in Settings and confirm you own this network')+'.</div>';
+  if(df.state==='running') return head+'<div class="note" style="margin-top:6px">Checking '+df.checked+
+    ' device(s)&hellip; this takes a few seconds each.</div>';
+  if(!fs.length) return head+'<div class="note ok" style="margin-top:6px">'+
+    (df.state==='done'? 'No factory password was accepted on '+(df.checked||0)+' device(s).' :
+     'Not run yet. The check is opt-in and only touches devices on the allow-list.')+'</div>';
+  return head+fs.map(function(f){
+    return '<div class="kv" style="margin-top:6px"><span><span class="badge sev-'+esc(f.severity)+'">'+
+      esc(f.severity)+'</span> '+esc(f.text)+'</span></div>'+
+      '<div class="small muted" style="margin:2px 0 8px 6px">'+esc(f.advice)+'</div>';
+  }).join('');
+}
+function checkDefaults(){
+  var el=document.getElementById('dfmsg'); el.textContent='starting ...';
+  api('/api/defaults/check',{method:'POST',body:'{}'}).then(function(r){
+    el.textContent = r.state==='running'? 'checking - this page refreshes itself' :
+      (r.why||r.state);
+    poll();
+  });
+}
+function viewExposure(){
+  var ex=((S.data||{}).insights||{}).exposure||{}, fs=ex.findings||[], c=ex.counts||{};
+  var risky=fs.filter(function(f){ return f.risk!=='info'; });
+  if(!fs.length){
+    return '<div class="card"><h2>Open ports</h2><div class="empty">No open port has been '+
+      'found yet. Run a scan from Devices; the port list is rebuilt with every scan.</div></div>';
+  }
+  var rows=risky.map(function(f){
+    return '<tr onclick="this.nextElementSibling.style.display=(this.nextElementSibling.style.display===\'none\'?\'table-row\':\'none\')" style="cursor:pointer">'+
+      '<td><span class="badge sev-'+esc(f.risk)+'">'+esc(f.risk)+'</span></td>'+
+      '<td>'+esc(f.device||'')+' <span class="muted small">'+esc(f.ip||'')+'</span></td>'+
+      '<td class="mono">'+esc(f.port)+'</td>'+
+      '<td>'+esc(f.service)+'</td>'+
+      '<td class="small">'+esc((f.why||'').slice(0,90))+'</td></tr>'+
+      '<tr style="display:none"><td></td><td colspan="4" class="small" style="padding:8px 6px">'+
+      '<b>How to close it:</b> '+esc(f.how)+'<br><span class="muted"><b>Keep it open only if:</b> '+
+      esc(f.keep)+'</span></td></tr>';
+  }).join('');
+  return '<div class="kpis">'+
+    kpi('Open ports', ex.total||0, (risky.length)+' worth acting on')+
+    kpi('High risk', c.high||0, 'close these first')+
+    kpi('Medium', c.medium||0, 'restrict or document')+
+    kpi('Devices affected', Object.keys(risky.reduce(function(a,f){a[f.device]=1;return a;},{})).length, '')+
+    '</div>'+
+    '<div class="card"><h2>Open ports and how to close them</h2>'+
+    '<div class="small muted" style="margin-bottom:10px">Click a row for the exact steps. '+
+    'Nothing here is exploited - it is what the scan found, plus what to switch off.</div>'+
+    '<table><thead><tr><th>Risk</th><th>Device</th><th>Port</th><th>Service</th>'+
+    '<th>Why it matters</th></tr></thead><tbody>'+(rows||
+      '<tr><td colspan="5" class="empty">Only informational ports are open.</td></tr>')+
+    '</tbody></table>'+
+    '<div style="margin-top:12px"><button class="sm" onclick="window.open(\'/api/hardening.md\',\'_blank\')">'+
+    'Download the hardening plan (Markdown)</button> '+
+    '<button class="sm" onclick="checkDefaults()">Check factory passwords</button> '+
+    '<span id="dfmsg" class="small muted"></span></div>'+
+    defaultsBlock()+'</div>';
+}
+function viewTopology(){
+  var g=((S.data||{}).insights||{}).topology||{}, nodes=g.nodes||[], links=g.links||[];
+  if(!nodes.length){
+    return '<div class="card"><h2>Topology</h2><div class="empty">No switch or access point '+
+      'has announced its neighbours yet. LLDP or CDP must be enabled on the devices '+
+      '(Cisco: <span class="mono">cdp run</span>, others: <span class="mono">lldp run</span>) '+
+      'and SNMP must be able to read them. The map is rebuilt every ten minutes.</div></div>';
+  }
+  var byDepth={};
+  nodes.forEach(function(n){ (byDepth[n.depth]=byDepth[n.depth]||[]).push(n); });
+  var depths=Object.keys(byDepth).map(Number).sort(function(a,b){return a-b;});
+  var colW=210, rowH=54, W=Math.max(560, depths.length*colW), H=Math.max(220, 
+    Math.max.apply(null, depths.map(function(d){return byDepth[d].length;}))*rowH+40);
+  var pos={};
+  var svg='';
+  links.forEach(function(l){
+    var a=pos[l.a], b=pos[l.b];
+  });
+  depths.forEach(function(d,ci){
+    byDepth[d].forEach(function(n,ri){
+      pos[n.id]={x:20+ci*colW, y:30+ri*rowH};
+    });
+  });
+  links.forEach(function(l){
+    var a=pos[l.a], b=pos[l.b];
+    if(!a||!b) return;
+    svg+='<line x1="'+(a.x+150)+'" y1="'+(a.y+14)+'" x2="'+b.x+'" y2="'+(b.y+14)+
+      '" stroke="#2b3a4b" stroke-width="1.4"/>'+
+      '<text x="'+((a.x+150+b.x)/2)+'" y="'+(a.y+10)+'" fill="#66788c" font-size="9">'+
+      esc(l.a_port||'')+'</text>';
+  });
+  depths.forEach(function(d){
+    byDepth[d].forEach(function(n){
+      var p=pos[n.id], col=n.is_gateway?'#3ba55d':(n.known?'#2f6f9f':'#4a5563');
+      svg+='<g style="cursor:pointer" onclick="'+(n.ip? ("openDev('"+esc(n.ip)+"')") : '')+'">'+
+        '<rect x="'+p.x+'" y="'+p.y+'" width="150" height="28" rx="6" fill="#131a22" '+
+        'stroke="'+col+'" stroke-width="1.2"/>'+
+        '<text x="'+(p.x+8)+'" y="'+(p.y+18)+'" fill="#dbe6f0" font-size="11">'+
+        esc((n.label||'').slice(0,20))+'</text>'+
+        '<text x="'+(p.x+8)+'" y="'+(p.y+40)+'" fill="#66788c" font-size="9">'+
+        esc(n.type||'')+(n.is_gateway?' · gateway':'')+'</text></g>';
+    });
+  });
+  return '<div class="kpis">'+
+    kpi('Devices on the map', g.stats.devices||0, (g.stats.links||0)+' links discovered')+
+    kpi('Queried', g.stats.queried||0, 'switches and access points')+
+    kpi('Last rebuild', g.ts? ago(Math.round(Date.now()/1000-g.ts)) : 'never', 'every 10 minutes')+
+    '</div>'+
+    '<div class="card"><h2>Topology - from LLDP and CDP</h2>'+
+    '<div style="overflow:auto"><svg width="'+W+'" height="'+H+'">'+svg+'</svg></div>'+
+    '<div class="small muted" style="margin-top:8px">Grey boxes are neighbours the devices '+
+    'reported but which have no IP in the scan; click a box to open that device.</div></div>';
+}
 function viewTraffic(){
   var d=S.data, t=d.traffic||{}, top=t.top||[];
   var max=top.length?Math.max.apply(null,top.map(function(x){return x.down_bps+x.up_bps;})):1;
@@ -513,14 +630,31 @@ function loadReports(){
     S.reports=r; render();
   }).catch(function(){});
 }
+function slaFleet(){
+  api('/api/sla/fleet',{method:'POST',body:'{}'}).then(function(r){
+    alert(r.ok? ('Written '+r.count+' report(s) in '+r.dir) : ('Failed: '+(r.message||'?')));
+  });
+}
+function slaDownload(month){
+  var m=month||'';
+  window.open('/api/sla.pdf'+(m? ('?month='+encodeURIComponent(m)) : ''), '_blank');
+}
 function viewReports(){
   var d=S.data||{};
   if(!S.reports){ loadReports();
     return '<div class="card"><div class="empty">loading report&hellip;</div></div>'; }
   var r=S.reports, st=r.stats||{}, rows=r.devices||[];
+  var slaBar='<div class="card" style="margin-bottom:14px"><h2>Monthly service report</h2>'+
+    '<div class="small muted" style="margin-bottom:10px">A PDF for the owner or the ISP: '+
+    'availability, incidents, MTTR, latency, disk trends and the security score.</div>'+
+    '<button class="sm" onclick="slaDownload()">Last month (PDF)</button> '+
+    '<button class="sm" onclick="slaDownload(new Date().toISOString().slice(0,7))">'+
+    'This month so far (PDF)</button>'+
+    (((S.data||{}).sites||{}).enabled? ' <button class="sm" onclick="slaFleet()">'+
+      'All hotels (hub, one PDF each)</button>':'')+'</div>';
   var sev=st.by_severity||{};
   var maxAvail=100;
-  return '<div class="toolbar">'+
+  return slaBar+'<div class="toolbar">'+
     [1,7,30].map(function(dd){ return '<span class="chip '+((S.repDays||7)===dd?'on':'')+
       '" onclick="S.repDays='+dd+';S.reports=null;render()">last '+dd+' day'+(dd>1?'s':'')+'</span>'; }).join('')+
     '<span class="spacer"></span>'+
@@ -849,6 +983,32 @@ function viewSettings(){
      '<button class="sm" onclick="testBranch()">Send a test report</button>'+
      '<div id="brmsg" class="small muted" style="margin-top:6px"></div>'+
    '</div>'+
+   '<div class="card"><h2>Factory-password check (opt-in)</h2>'+
+     chk('Check devices for factory passwords','dfen',(s.defaults_check||{}).enabled)+
+     chk('I own this network and may test its devices','dfown',(s.defaults_check||{}).i_own_this_network)+
+     ((s.defaults_check||{}).acknowledged_by?'<div class="small muted" style="margin:-4px 0 8px">Confirmed by '+
+       esc(s.defaults_check.acknowledged_by)+' on '+new Date(s.defaults_check.acknowledged_at*1000).toLocaleString()+
+       '. Only private LAN addresses are ever tested.</div>':'<div class="small muted" style="margin:-4px 0 8px">Only private LAN addresses are ever tested; public addresses are refused.</div>')+
+     fld('Allowed device IPs (comma separated)','dfips',((s.defaults_check||{}).allow_ips||[]).join(', '))+
+     '<div class="grid2">'+fld('Max attempts per device','dfmax',(s.defaults_check||{}).max_attempts||12,'number')+
+       fld('Pause between attempts (ms)','dfdelay',(s.defaults_check||{}).delay_ms||350,'number')+'</div>'+
+     '<div class="small muted">Tries a short list of published factory logins once each - '+
+     'never a dictionary, never a repeat. Form logins on recorders are reported as '+
+     '&quot;verify by hand&quot; instead of guessed, so nothing gets locked out.</div>'+
+   '</div>'+
+   '<div class="card"><h2>Automatic fixes (guarded)</h2>'+
+     chk('Allow the console to power-cycle a PoE port','rmen',(s.remediation||{}).enabled)+
+     chk('Dry run - record what it would do, change nothing','rmdry',(s.remediation||{}).dry_run!==false)+
+     fld('Maintenance window (HH:MM-HH:MM)','rmwin',(s.remediation||{}).window||'01:00-06:00')+
+     fld('Allowed device IPs (comma separated)','rmips',((s.remediation||{}).allow_ips||[]).join(', '))+
+     fld('Max attempts per device per hour','rmmax',(s.remediation||{}).max_per_hour||2,'number')+
+     '<div class="small muted">Only one action exists (PoE port bounce, over SNMP) and it '+
+     'needs the device on this list, inside the window, under the hourly limit. Every '+
+     'attempt is written to Events.</div>'+
+   '</div>'+
+   '<div class="card" style="margin-top:14px"><h2>Secrets at rest</h2>'+
+     '<div class="small muted" id="vaultstate">checking&hellip;</div>'+
+   '</div>'+
    '<div class="card"><h2>SNMPv3 (encrypted polling)</h2>'+
      chk('Poll devices with SNMPv3 auth+priv','v3en',(s.snmp_v3||{}).enabled)+
      '<div class="grid3">'+fld('User','v3user',(s.snmp_v3||{}).user)+
@@ -877,6 +1037,13 @@ function viewSettings(){
      'replies with the chat id to paste here. Then: /status, /incidents, /ack, /sites.</div>'+
      '<button class="sm" onclick="testTelegram()">Send test message</button> '+
      '<span id="tgmsg" class="small muted"></span>'+
+   '</div>'+
+   '<div class="card"><h2>Monthly report by email</h2>'+
+     chk('Email the service report every month','slen',(s.sla_email||{}).enabled)+
+     '<div class="grid3">'+fld('Day of month','slday',(s.sla_email||{}).day||1,'number')+
+       fld('Hour (0-23)','slhour',(s.sla_email||{}).hour||7,'number')+
+       fld('Recipients','slto',((s.sla_email||{}).to||[]).join(', '))+'</div>'+
+     '<div class="small muted" id="slstate"></div>'+
    '</div>'+
    '<div class="card" style="margin-top:14px"><h2>Database backup</h2>'+
      chk('Back up the database automatically','bken',(s.backup||{}).enabled!==false)+
@@ -924,6 +1091,7 @@ function viewSettings(){
      '<div class="small muted">Incidents also go to the generic webhook above. Use the button '+
      'below to prove every channel works.</div>'+
    '</div>'+
+   aiCard(s.ai||{})+
    updateCard(s.update||{})+
    '<div class="card" style="margin-top:14px"><h2>Heartbeat (dead-man\'s switch)</h2>'+
      chk('Ping an outside service so you are told when this whole site goes dark','hben',
@@ -1006,6 +1174,65 @@ function testPush(){
     el.textContent = r.ok ? 'sent - check your phone' : ('failed - '+(r.message||'?'));
   });
 }
+function aiCard(cfg){
+  var st=S.data.ai||{};
+  var models=['claude-opus-5-5','claude-sonnet-5-5','claude-haiku-5-5'];
+  var m=cfg.model||'claude-opus-5-5'; if(models.indexOf(m)<0) models.unshift(m);
+  return '<div class="card" style="margin-top:14px"><h2>Claude AI diagnosis</h2>'+
+    '<div class="small muted" style="margin-bottom:8px">When an incident opens, Claude reads the same evidence as '+
+    'the built-in rules and writes the root cause, confidence and steps. The rule-based diagnosis is sent first and '+
+    'stays if Claude is unavailable. Monitoring data leaves this PC only while this is on.</div>'+
+    '<div class="field"><span class="sw"><input type="checkbox" id="aien" '+(cfg.enabled?'checked':'')+
+      '> Use Claude for incident diagnosis and "Ask AI"</span></div>'+
+    '<div class="field"><label>Anthropic API key</label><input type="password" id="aikey" autocomplete="off" placeholder="'+
+      (cfg.api_key_set?'******** saved - type a new key to replace it':'sk-ant-...')+'"></div>'+
+    '<div class="grid3"><div class="field"><label>Model</label><select id="aimodel">'+
+      models.map(function(x){return '<option '+(x===m?'selected':'')+'>'+esc(x)+'</option>';}).join('')+
+    '</select></div>'+
+    '<div class="field"><label>Effort</label><select id="aieffort">'+['low','medium','high','xhigh'].map(function(x){
+      return '<option '+((cfg.effort||'high')===x?'selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'+
+    '<div class="field"><label>Max AI calls per hour</label><input type="number" id="aimax" value="'+
+      esc(cfg.max_per_hour||20)+'"></div></div>'+
+    '<div class="small muted" style="margin-bottom:8px">Status: '+(st.available?'ready':'not ready')+
+      (st.last_error?' &middot; '+esc(st.last_error):'')+' &middot; '+(st.diagnosed||0)+' incident(s) diagnosed &middot; '+
+      (st.calls_last_hour||0)+' call(s) in the last hour</div>'+
+    '<div style="display:flex;gap:8px;align-items:center"><button class="sm" onclick="testAI()">Test the key</button>'+
+      '<span id="aimsg" class="small muted"></span></div></div>';
+}
+function aiPatch(){
+  var p={enabled:chkVal('aien'),model:(document.getElementById('aimodel')||{}).value||'claude-opus-5-5',
+         effort:(document.getElementById('aieffort')||{}).value||'high',max_per_hour:num('aimax',20)};
+  var k=strVal('aikey'); if(k) p.api_key=k.trim();
+  return p;
+}
+function testAI(){
+  var el=document.getElementById('aimsg'); el.textContent='save first, then testing ...';
+  api('/api/ai/test',{method:'POST',body:'{}'}).then(function(r){ el.textContent=r.message||(r.ok?'ok':'failed'); });
+}
+var ASK=[];
+function askHtml(){
+  return '<div id="askthread">'+ASK.map(function(m){
+      return '<div style="margin:8px 0"><div class="small muted">'+(m.role==='user'?'You':'Claude')+'</div>'+
+        '<div style="white-space:pre-wrap;font-size:13px">'+esc(m.content)+'</div></div>';}).join('')+'</div>'+
+    '<textarea id="askq" rows="3" style="width:100%;margin-top:8px" placeholder="e.g. Why is the internet slow at reception?"></textarea>'+
+    '<div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="sm primary" onclick="sendAsk()">Ask</button>'+
+    '<span id="askmsg" class="small muted"></span></div>';
+}
+function openAsk(){
+  document.getElementById('drawer-title').textContent='Ask AI about this network';
+  document.getElementById('drawer-body').innerHTML=askHtml();
+  document.getElementById('drawer').classList.add('open');
+}
+function sendAsk(){
+  var q=strVal('askq').trim(); if(!q) return;
+  var hist=ASK.slice(-8); ASK.push({role:'user',content:q});
+  document.getElementById('drawer-body').innerHTML=askHtml();
+  document.getElementById('askmsg').textContent='thinking ...';
+  api('/api/ai/ask',{method:'POST',body:JSON.stringify({question:q,history:hist})}).then(function(r){
+    ASK.push({role:'assistant',content:r.answer||'(no answer)'});
+    document.getElementById('drawer-body').innerHTML=askHtml();
+  });
+}
 function updateCard(cfg){
   var u=S.data.update||{}, when=u.last_check?new Date(u.last_check*1000).toLocaleString():'not yet';
   var state={idle:'waiting for the first check',checking:'checking ...',up_to_date:'up to date',
@@ -1071,6 +1298,12 @@ function saveSettings(){
     teams:{enabled:chkVal('ten'),webhook_url:strVal('teurl')},
     hosts:{cpu_warn_pct:num('hcpu',90),mem_warn_pct:num('hmem',92),
            disk_warn_pct:num('hdisk',90),stale_minutes:num('hstale',10)},
+    defaults_check:{enabled:chkVal('dfen'),i_own_this_network:chkVal('dfown'),
+                    allow_ips:strVal('dfips').split(',').map(function(x){return x.trim();}).filter(Boolean),
+                    max_attempts:num('dfmax',12),delay_ms:num('dfdelay',350)},
+    remediation:{enabled:chkVal('rmen'),dry_run:chkVal('rmdry'),
+                 window:strVal('rmwin'),max_per_hour:num('rmmax',2),
+                 allow_ips:strVal('rmips').split(',').map(function(x){return x.trim();}).filter(Boolean)},
     snmp_v3:{enabled:chkVal('v3en'),user:strVal('v3user'),
              auth_proto:(document.getElementById('v3proto')||{}).value||'sha1',
              port:num('v3port',161),auth_password:strVal('v3auth'),
@@ -1078,11 +1311,14 @@ function saveSettings(){
     wifi:{enabled:chkVal('wfen'),client_oid:strVal('wfoid')},
     telegram:{enabled:chkVal('tgen'),token:strVal('tgtok'),
               chat_ids:strVal('tgchats').split(',').map(function(x){return x.trim();}).filter(Boolean)},
+    sla_email:{enabled:chkVal('slen'),day:num('slday',1),hour:num('slhour',7),
+               to:strVal('slto').split(',').map(function(x){return x.trim();}).filter(Boolean)},
     backup:{enabled:chkVal('bken'),every_hours:num('bkh',24),
             keep_daily:num('bkday',7),keep_weekly:num('bkwk',4)},
     fleet_update:{version:strVal('upver').trim()},
     heartbeat:{enabled:chkVal('hben'),url:strVal('hburl'),interval_seconds:num('hbint',300)},
     update:{check:chkVal('upchk'),auto_install:document.getElementById('upauto')?chkVal('upauto'):true},
+    ai:aiPatch(),
     access:{allow_cidrs:strVal('accallow').split(',').map(function(x){return x.trim();}).filter(Boolean),
             deny_cidrs:strVal('accdeny').split(',').map(function(x){return x.trim();}).filter(Boolean),
             trusted_proxies:strVal('accproxy').split(',').map(function(x){return x.trim();}).filter(Boolean)},
@@ -1274,7 +1510,8 @@ function closeDrawer(){ document.getElementById('drawer').classList.remove('open
 function render(){
   if(!S.data) return;
   nav(); head();
-  var v={overview:viewOverview,devices:viewDevices,incidents:viewIncidents,traffic:viewTraffic,
+  var v={overview:viewOverview,devices:viewDevices,incidents:viewIncidents,
+         topology:viewTopology,exposure:viewExposure,traffic:viewTraffic,
          reports:viewReports,locations:viewLocations,users:viewUsers,events:viewEvents,
          settings:viewSettings}[S.tab]||viewOverview;
   document.getElementById('view').innerHTML=v();
@@ -1287,6 +1524,7 @@ window.addEventListener('hashchange',function(){
 });
 document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeDrawer(); });
 poll(); setInterval(poll,3000);
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }
 """
 
 LOGIN_CSS = r"""
@@ -1434,7 +1672,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = (FORM_TOTP.format(who=who, pending=pending) if pending else FORM_PASSWORD)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.22.0"))
+            .replace("__VERSION__", "1.26.0"))
 
 
 def app_page(version):
@@ -1442,6 +1680,9 @@ def app_page(version):
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NetSentinel {version}</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#17603a">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
 <style>{CSS}</style></head>
 <body><div class="app">
   <aside class="side">
@@ -1632,6 +1873,8 @@ class Handler(BaseHTTPRequestHandler):
             data["settings"] = _mask_branch(data.get("settings") or {})
             upd = getattr(self.scanner, "updater", None)
             data["update"] = upd.snapshot() if upd else None
+            from . import ai as ai_mod
+            data["ai"] = ai_mod.get().status()
             role = user.get("role") or "viewer"
             scoped = [x for x in (user.get("sites") or []) if x]
             if scoped and role != "admin":
@@ -1643,6 +1886,73 @@ class Handler(BaseHTTPRequestHandler):
                 "anonymous": user.get("anonymous", False),
             }
             return self._json(data)
+        if path in ("/manifest.json", "/sw.js", "/static/icon-192.png",
+                    "/static/icon-512.png"):
+            name = path.lstrip("/")
+            ctype = {"manifest.json": "application/manifest+json",
+                     "sw.js": "application/javascript",
+                     "static/icon-192.png": "image/png",
+                     "static/icon-512.png": "image/png"}.get(name, "application/octet-stream")
+            rel = name[len("static/"):] if name.startswith("static/") else name
+            file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "static", rel)
+            try:
+                with open(file_path, "rb") as fh:
+                    data = fh.read()
+            except OSError:
+                self._send(404, "not found", "text/plain")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if path == "/api/hardening.md":
+            user = self._user()
+            if user is None:
+                self._send(401, "sign in required", "text/plain")
+                return
+            from . import ports as ports_mod
+            with self.scanner.lock:
+                devices = list(self.scanner.devices.values())
+            body = ports_mod.plan(devices).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/markdown; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="hardening-plan.md"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/api/v1/exposure":
+            with self.scanner.lock:
+                devices = list(self.scanner.devices.values())
+            from . import ports as ports_mod
+            return self._json(ports_mod.exposure(devices))
+        if path == "/api/sla.pdf":
+            user = self._user()
+            if user is None:
+                self._send(401, "sign in required", "text/plain")
+                return
+            from . import sla as sla_mod
+            month = (parse_qs(parsed.query).get("month") or [""])[0]
+            try:
+                out = os.path.join(tempfile.gettempdir(), "netsentinel-sla")
+                file_path = sla_mod.render(month or None, out_dir=out)
+                with open(file_path, "rb") as fh:
+                    data = fh.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/pdf")
+                self.send_header("Content-Disposition",
+                                 'attachment; filename="%s"' % os.path.basename(file_path))
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            except Exception as exc:
+                self._send(500, f"report failed: {exc}", "text/plain")
+                return
         if path == "/api/history":
             if self._guard() is None:
                 return
@@ -1880,6 +2190,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             if not self._need("settings", user):
                 return
+            from .safety import record_acknowledgements
+            record_acknowledgements(settings.load(), payload, who, store.add_event)
             self.scanner.update_settings(payload)
             self.scanner.audit(who, "settings changed",
                                ", ".join(sorted(payload.keys()))[:120])
@@ -1897,6 +2209,21 @@ class Handler(BaseHTTPRequestHandler):
                                    cfg.get("auth_proto") or "sha1",
                                    port=int(cfg.get("port") or 161))
             return self._json({"ok": ok, "message": msg})
+        if path == "/api/sla/fleet":
+            if not self._need("settings", user):
+                return
+            from . import sla as sla_mod
+            try:
+                out_dir = os.path.join(tempfile.gettempdir(), "netsentinel-fleet")
+                files = sla_mod.fleet(out_dir=out_dir)
+                return self._json({"ok": bool(files), "count": len(files), "dir": out_dir,
+                                   "message": "" if files else "no hotel has sent a summary yet"})
+            except Exception as exc:
+                return self._json({"ok": False, "message": str(exc)[:160]})
+        if path == "/api/defaults/check":
+            if not self._need("settings", user):
+                return
+            return self._json(self.scanner.check_default_passwords())
         if path == "/api/backup/now":
             if not self._need("settings", user):
                 return
@@ -1925,6 +2252,24 @@ class Handler(BaseHTTPRequestHandler):
             from . import push as push_mod
             ok, msg = push_mod.send(settings.load(), "Test from NetSentinel",
                                     "Phone alerts are working.", "info")
+            return self._json({"ok": ok, "message": msg})
+        if path == "/api/ai/ask":
+            if not self._need("read", user):
+                return
+            from . import ai as ai_mod
+            snap = self.scanner.snapshot()
+            scoped = [x for x in (user.get("sites") or []) if x]
+            if scoped and (user.get("role") or "viewer") != "admin":
+                snap = _apply_scope(snap, scoped)
+            answer, source = ai_mod.get().ask(payload.get("question", ""), ai_mod.compact_snapshot(snap),
+                                              payload.get("history") or [])
+            self.scanner.audit(who, "asked the AI", str(payload.get("question", ""))[:80])
+            return self._json({"ok": source == "claude", "answer": answer, "source": source})
+        if path == "/api/ai/test":
+            if not self._need("settings", user):
+                return
+            from . import ai as ai_mod
+            ok, msg = ai_mod.get().test()
             return self._json({"ok": ok, "message": msg})
         if path in ("/api/update/check", "/api/update/install"):
             if not self._need("settings", user):
@@ -2154,7 +2499,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.22.0", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.26.0", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

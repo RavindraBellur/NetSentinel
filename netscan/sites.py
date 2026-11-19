@@ -62,7 +62,7 @@ def summary(scanner):
     wan = snap.get("wan") or {}
     local = snap.get("local") or {}
     public = snap.get("public") or {}
-    return {
+    payload = {
         "site": settings.get("site_name") or local.get("ip") or "branch",
         "version": snap.get("version") or "",
         "ts": int(time.time()),
@@ -88,6 +88,12 @@ def summary(scanner):
         "devices": len(snap.get("devices") or []),
         "monitored": health.get("monitored", 0),
     }
+    try:
+        from . import sla as sla_mod
+        payload["sla"] = sla_mod.rolling_summary(31)
+    except Exception:
+        payload["sla"] = {}
+    return payload
 
 
 class BranchReporter(threading.Thread):
@@ -281,6 +287,7 @@ def hub_overview(scanner=None):
             "wan": payload.get("wan") or {},
             "traffic": payload.get("traffic") or {},
             "incidents": payload.get("incidents") or [],
+            "sla": payload.get("sla") or {},
             "internet": payload.get("internet") or [],
         })
     if not use_cache:

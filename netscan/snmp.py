@@ -288,6 +288,37 @@ def walk_bulk(host: str, base: str, community: str = "public", timeout: float = 
     return rows
 
 
+def set(host: str, oid: str, value, index: str = "", community: str = "private",
+        timeout: float = 2.0, retries: int = 1):
+    """SNMP SET one integer value. Returns True when the device accepted it.
+
+    Used by remediation (PoE port bounce). SET needs a write community, so this always goes
+    out over v2c - v3 SET is not implemented and the console says so.
+    """
+    full = oid + ("." + str(index) if index else "")
+    request_id = random.randint(1, 2 ** 30)
+    varbind = _tlv(0x30, _enc_oid(full) + _enc_int(int(value)))
+    pdu = _tlv(0xA3, _enc_int(request_id) + _enc_int(0) + _enc_int(0) + _tlv(0x30, varbind))
+    packet = _tlv(0x30, _enc_int(1) + _tlv(0x04, community.encode()) + pdu)
+    for _ in range(retries + 1):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.settimeout(timeout)
+            s.sendto(packet, (host, 161))
+            data, _addr = s.recvfrom(4096)
+            parsed = _parse(data)
+            if parsed:
+                return True
+        except Exception:
+            continue
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+    return False
+
+
 def sysdescr(host: str, timeout: float = 0.8):
     """Return (sysDescr, community) or ('', '')."""
     for community in ("public", "private", "Community", "cable-docsis"):

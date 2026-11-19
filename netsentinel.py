@@ -129,6 +129,19 @@ def main(argv=None):
                         help="show the certificate expiry and the detected renewal tool, then exit")
     parser.add_argument("--fleet-setup", metavar="DIR",
                         help="write one-click setup files for a chain of sites into DIR and exit")
+    parser.add_argument("--restore", metavar="FILE",
+                        help="restore a database backup (needs --confirm)")
+    parser.add_argument("--confirm", action="store_true",
+                        help="really do it (for --restore)")
+    parser.add_argument("--backups", action="store_true", help="list the database backups")
+    parser.add_argument("--sla-fleet", metavar="DIR", nargs="?", const="reports",
+                        help="one PDF per hotel, from the reports the branches send")
+    parser.add_argument("--sla-report", metavar="SITE", nargs="?", const="",
+                        help="write the monthly service report as a PDF and exit")
+    parser.add_argument("--sla-month", metavar="YYYY-MM",
+                        help="which month for --sla-report (default: last month)")
+    parser.add_argument("--sla-out", metavar="DIR", default="reports",
+                        help="where to write the PDF (default: ./reports)")
     parser.add_argument("--fleet-csv", metavar="FILE",
                         help="CSV of name,region,email for a large roll-out (header optional)")
     parser.add_argument("--fleet-emails", metavar="LIST",
@@ -278,6 +291,43 @@ def main(argv=None):
         print()
         print(f"  summary: {summary}")
         print("  Copy each site's folder to that hotel and run setup-<site>.cmd there.")
+        return 0
+
+    if args.backups:
+        from netscan import backup as backup_mod
+        items = backup_mod.listing(50)
+        if not items:
+            print("  no backups yet")
+        for item in items:
+            print(f"  {item['name']:<40} {item['bytes']/1024:8.0f} KB  "
+                  f"{time.strftime('%d/%m/%Y %H:%M', time.localtime(item['when']))}")
+        return 0
+
+    if args.restore:
+        from netscan import backup as backup_mod
+        ok, msg = backup_mod.restore(args.restore, confirm=args.confirm)
+        print(("  " if ok else "  failed: ") + msg)
+        return 0 if ok else 1
+
+    if args.sla_fleet is not None:
+        from netscan import sla as sla_mod
+        files = sla_mod.fleet(out_dir=args.sla_fleet, month=args.sla_month or None)
+        if not files:
+            print("  no hotel has sent a summary yet (run this on the hub)")
+            return 1
+        for f in files:
+            print(f"  written: {f}")
+        return 0
+
+    if args.sla_report is not None:
+        from netscan import sla as sla_mod
+        try:
+            path = sla_mod.render(args.sla_month or None, site=args.sla_report or None,
+                                  out_dir=args.sla_out)
+        except Exception as exc:
+            print(f"  report failed: {exc}")
+            return 1
+        print(f"  written: {path}")
         return 0
 
     if args.heartbeat_provision:

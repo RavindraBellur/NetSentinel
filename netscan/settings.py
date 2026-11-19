@@ -78,7 +78,8 @@ DEFAULTS = {
              "format": "cef", "min_severity": "medium", "facility": 13},
     "hosts": {"cpu_warn_pct": 90, "disk_warn_pct": 90, "mem_warn_pct": 92,
               "stale_minutes": 10},
-    "ai": {"enabled": False, "api_key": "", "model": "claude-sonnet-4-5", "max_per_hour": 10},
+    "ai": {"enabled": False, "api_key": "", "model": "claude-opus-5-5", "effort": "high",
+           "max_per_hour": 20},
     "wan": {"interval_seconds": 600},
     "hub": {"enabled": False, "expect_minutes": 5, "sites": []},
     "branch": {"hub_url": "", "token": "", "interval_seconds": 30},
@@ -93,6 +94,9 @@ DEFAULTS = {
     "snmp_v3": {"enabled": False, "user": "", "auth_password": "", "auth_proto": "sha1",
                 "priv_password": "", "port": 161},
     "wifi": {"enabled": True, "client_oid": ""},
+    "sla_email": {"enabled": False, "day": 1, "hour": 7, "to": [], "last_sent": ""},
+    "defaults_check": {"enabled": False, "i_own_this_network": False, "allow_ips": [],
+                       "max_attempts": 12, "delay_ms": 350},
     "backup": {"enabled": True, "every_hours": 24, "keep_daily": 7, "keep_weekly": 4},
     "fleet_update": {"version": ""},
     "update": {"check": True, "auto_install": True},
@@ -117,6 +121,18 @@ def _deep_merge(base, override):
     return out
 
 
+def _vault():
+    """Imported lazily: the vault needs the store module, which needs settings."""
+    from . import vault as _v
+    return _v
+
+
+def _vault():
+    """Imported lazily: the vault reads the database path from the store module."""
+    from . import vault as _v
+    return _v
+
+
 def load():
     global _config
     with _lock:
@@ -130,6 +146,10 @@ def load():
         except Exception:
             data = {}
         _config = _deep_merge(DEFAULTS, data)
+        try:
+            _config = _vault().open_secrets(_config)
+        except Exception:
+            pass
         return _config
 
 
@@ -152,8 +172,13 @@ def save(patch=None):
         try:
             os.makedirs(CONFIG_DIR, exist_ok=True)
             tmp = CONFIG_PATH + ".tmp"
+            disk = cfg
+            try:
+                disk = _vault().seal(cfg)
+            except Exception:
+                pass
             with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(cfg, fh, indent=2)
+                json.dump(disk, fh, indent=2)
             os.replace(tmp, CONFIG_PATH)
             try:
                 os.chmod(CONFIG_PATH, 0o600)
@@ -180,14 +205,34 @@ def reset():
         return _config
 
 
+MASK = "********"
+# Every secret the dashboard must never send back to a browser (viewers included).
+SECRET_FIELDS = (("email", "password"), ("ai", "api_key"), ("telegram", "token"),
+                 ("snmp_v3", "auth_password"), ("snmp_v3", "priv_password"),
+                 ("oidc", "client_secret"), ("push", "url"), ("branch", "token"))
+
+
 def public_view():
     """Config with secrets masked, for the dashboard."""
     cfg = copy.deepcopy(load())
-    for section, field in (("email", "password"), ("ai", "api_key")):
-        value = cfg.get(section, {}).get(field)
-        if value:
-            cfg[section][field] = "********"
-            cfg[section][field + "_set"] = True
+    for section, field in SECRET_FIELDS:
+        block = cfg.get(section)
+        if not isinstance(block, dict):
+            continue
+        if block.get(field):
+            block[field] = MASK
+            block[field + "_set"] = True
         else:
-            cfg[section][field + "_set"] = False
+            block[field + "_set"] = False
     return cfg
+
+
+def drop_masked(patch):
+    """Remove masked placeholders from a settings patch so they never overwrite a real secret."""
+    for section, field in SECRET_FIELDS:
+        block = (patch or {}).get(section)
+        if isinstance(block, dict):
+            if block.get(field) in (MASK, "******** saved"):
+                block.pop(field, None)
+            block.pop(field + "_set", None)
+    return patch

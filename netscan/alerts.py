@@ -7,6 +7,7 @@ Failed sends are logged as events, never retried in a loop.
 from __future__ import annotations
 
 import json
+import os
 import smtplib
 import ssl
 import threading
@@ -78,8 +79,8 @@ def flush(cfg, log=None):
     return {"sent": sent, "failed": failed}
 
 
-def send_email(cfg, subject, body, to=None):
-    """Send one email. `to` overrides the configured recipient list (per-site routing)."""
+def send_email(cfg, subject, body, to=None, attachments=None):
+    """Send one email. `to` overrides the recipients; `attachments` is a list of file paths."""
     e = cfg.get("email") or {}
     recipients = [x.strip() for x in (to or []) if x and "@" in x] or _recipients(cfg)
     if not (e.get("enabled") and e.get("host") and recipients):
@@ -89,6 +90,16 @@ def send_email(cfg, subject, body, to=None):
     msg["From"] = e.get("from") or e.get("username") or "netsentinel@localhost"
     msg["To"] = ", ".join(recipients)
     msg.set_content(body)
+    for path in (attachments or []):
+        try:
+            with open(path, "rb") as fh:
+                data = fh.read()
+            name = os.path.basename(path)
+            ctype = "application/pdf" if name.lower().endswith(".pdf") else "application/octet-stream"
+            maintype, _, subtype = ctype.partition("/")
+            msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=name)
+        except OSError:
+            continue
     host = e.get("host")
     port = int(e.get("port") or 465)
     timeout = 20

@@ -1,4 +1,4 @@
-# NetSentinel 1.22
+# NetSentinel 1.26
 
 
 A network operations console for a small or mid-size office that runs on one PC, on
@@ -20,7 +20,57 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 
 ---
 
-## What's new in 1.22 — one line again: 1.21 features + signed auto-update
+## What's new in 1.26 — Claude diagnosis, safety rails, and proof
+
+| Change | What it does |
+|---|---|
+| **Claude AI diagnosis** | When an incident opens or escalates, the built-in rules diagnose it and the alert goes out at once; in the background Claude (claude-opus-5-5 by default) reads the same evidence — device, neighbours, gateway, internet targets, recent events, traffic, and the rules' own verdict — and replaces the diagnosis with a structured one: root cause, confidence, evidence, alternatives, impact, ordered steps, missing data. If Claude is unavailable for any reason the rule-based diagnosis stays. Settings → *Claude AI diagnosis*: your own Anthropic API key, model, effort, hourly limit, *Test the key*. |
+| **Ask AI** | A header button opens a chat about the live network ("why is the internet slow at reception?"). Answers use only the data that user is allowed to see. |
+| **Safety rails for active features** | The factory-password check and PoE power-cycling refuse any address outside private LAN ranges, whatever the allow-list says; switching either on records who did it and when (shown in Settings and the Events log); power-cycling stays dry-run until explicitly set live. The EULA now spells out the operator's responsibility. |
+| **Secrets never reach the browser** | Telegram token, SNMPv3 passwords, SSO client secret, push URL and AI key are masked for every user (viewers used to receive some of them), and a masked value can never overwrite the real one. The AI key is encrypted at rest with the other secrets. |
+| **Proof: 40 automated tests, run on Windows before every build** | Signed updates (bad signature, tampering, path traversal, rollback, hub fleet update), Claude diagnosis with a fake API (fallback on refusal/errors/limits), factory-password checks against fake devices, backup restore with live WAL data, SNMPv3 RFC 3414 vectors, the SLA PDF, and the live console (no secrets in the API, CSRF guard, valid dashboard JavaScript). The build then proves the real `NetSentinel.exe` replaces itself while running and refuses a tampered release. A failing test stops the release. Run them yourself: `python -m unittest discover -s tests -t .` |
+| **scapy no longer bundled in the exe** | scapy is GPL-2.0; it stays available for source installs (packet capture) but is never shipped inside NetSentinel.exe, and the build fails if it ever is. |
+
+## What was new in 1.25 — the housekeeping that protects what you already have
+
+| Feature | What it does |
+|---|---|
+| **Restore a backup** | `run.bat --backups` lists them, `run.bat --restore <file> --confirm` puts one back. Recent changes are flushed into the database first, the live database is copied aside with SQLite's backup API, and rolled back automatically if the restored file fails its integrity check. A backup you have never restored from is a hope, not a backup. |
+| **Monthly report by email** | On the 1st at 07:00 (configurable) the previous month's PDF is built and mailed to the owners — attachment included, last-send recorded so a restart cannot send it twice. |
+| **Fleet SLA** | Branches now include a rolling 31-day summary in every report; the hub turns those into **one PDF per hotel**. Reports → *All hotels (hub)*, or `run.bat --sla-fleet reports`. |
+
+## What was new in 1.24 — factory passwords, found safely
+
+| Feature | What it does |
+|---|---|
+| **Factory-password check** | Tries a short list of *published* factory logins (admin/admin, admin/12345, root/root, ubnt/ubnt …) once each against devices on the allow-list, and reports the ones that still work: "Lobby camera still accepts the factory login admin/12345 on port 8080". Before guessing, it confirms the device actually demands a password (a page that opens without one is never reported as a factory login). Opt-in, needs an explicit "I own this network" confirmation, a per-device attempt cap and a pause between tries. |
+
+What it checks, and what it deliberately does **not** do, is spelled out in section 3b5.
+
+## What was new in 1.23 — topology, SLA report, exposure, guarded fixes, secrets at rest
+
+Everything below (the 1.22 and 1.23 work done in the renamed copy) arrives in NetSentinel as 1.23.
+
+### Exposure, guarded fixes and secrets at rest
+
+| Feature | What it does |
+|---|---|
+| **Open-port exposure + hardening plan** | Every open port on every device, graded, with **the exact steps to close it** — Windows, Linux, router, or the device's own admin page — plus when it is legitimate to keep. New **Exposure** tab; click a row for the fix; **Download the hardening plan (Markdown)** for the technician. |
+| **Guarded auto-remediation** | *(As of 1.26 the guarded action exists but nothing triggers it automatically yet.)* One action only: power-cycle the PoE port an AP or camera hangs off. It runs only when remediation is on, the device is on the allow-list, it is inside the maintenance window, and under the hourly limit — with **dry-run on by default**. Every attempt, refused or executed, lands in Events. |
+| **Secrets encrypted at rest** | SMTP password, Telegram token, SNMPv3 keys, SSO secret and webhook URL are stored as `enc:v1:` AES-GCM blobs with a 0600 key file beside the database. Old plain-text values keep working. |
+| **Installable console (PWA)** | Manifest, service worker and icons: "Add to Home screen" on a phone gives a full-screen app that still opens when the link is flaky; live data is never cached. |
+
+### A map, and a report you can hand over
+
+| Feature | What it does |
+|---|---|
+| **Topology map** | Walks LLDP (IEEE 802.1AB) and CDP on every switch and AP, merges the two, drops duplicates, and lays the building out by depth from the gateway. Shows which port connects to what, marks neighbours that have no IP in the scan, and clicking a box opens the device. Rebuilt every ten minutes. |
+| **Monthly SLA report (PDF)** | One command or one button: `run.bat --sla-report "Udaipur - Lake Road" --sla-month 2026-11`, or Reports → *Last month (PDF)*. Availability, devices, incidents, MTTR, longest outage, per-device uptime/latency/p95/loss, disk trends, Wi-Fi retry rates, plus a page explaining exactly how each number was measured. |
+
+The PDF is written by a small built-in writer (no reportlab, no pip), so it works on a hotel
+PC that has never installed anything.
+
+## What was new in 1.22 — one line again: 1.21 features + signed auto-update
 
 1.19–1.21 were developed as a renamed copy ("Prahari"); 1.18 added signed automatic updates.
 1.22 brings both together under the NetSentinel name, so every install — including 1.18 —
@@ -440,6 +490,58 @@ Rates come from two readings of the cumulative counters, so the first pass only 
 a baseline. Radios are read every five minutes by the poller and shown on the Overview and in
 `GET /api/v1/insights`.
 
+## 3b4. Open ports, and how to close them
+
+The **Exposure** tab lists every open port the scan found, graded, with the fix. The
+catalogue covers about 35 services (FTP, Telnet, TFTP, SNMP, SMB, RDP, VNC, rpcbind, NFS,
+SMB, SQL/MySQL/Postgres/Mongo/Redis/Elastic, JetDirect, TR-069, Winbox, and more). Each
+entry has three parts:
+
+- **Why it matters** — one sentence a manager understands
+- **How to close it** — the actual command or menu, per platform
+- **Keep it open only if** — the legitimate case, so nobody breaks the hotel Wi-Fi chasing a score
+
+Examples of what it says:
+
+| Port | What it tells you to do |
+|---|---|
+| 23 Telnet | `no ip telnet server` (Cisco), `/ip service disable telnet` (MikroTik), untick Telnet in the web UI (Aruba/TP-Link/D-Link) |
+| 80 on a DVR | enable HTTPS and turn the HTTP listener off; if the device has no HTTPS, keep its admin page on a management VLAN |
+| 3389 RDP | never port-forward; restrict to an admin subnet, enable NLA (`enable_rdp.bat` does it), require MFA, prefer VPN/Tailscale |
+| 161 SNMP | move to SNMPv3 auth+priv (Settings → SNMPv3); if you must keep v2c, long random community + allow only the monitor |
+| 445 SMB | disable File and Printer Sharing on PCs that do not share, restrict to file servers, never port-forward |
+| 9100 print | restrict to the POS/KOT subnet at the switch ACL, or use IPP with authentication |
+
+**Download the hardening plan** produces a Markdown file grouped by device, top risk first,
+that a technician can work through line by line and tick off.
+
+## 3b5. Factory passwords: how the check works, and its limits
+
+The **Exposure** tab has a *Check factory passwords* button; the same thing is in Settings.
+It is opt-in, and refuses to run until you tick "I own this network and may test its
+devices" and list the IPs it may touch.
+
+| Protocol | How success is decided | What it finds |
+|---|---|---|
+| HTTP admin page | Basic or Digest auth answered with 200/302 instead of 401 | cameras, printers, APs, switches with an HTTP login |
+| RTSP (554) | `DESCRIBE` returns `200 OK` instead of `401` | camera streams open to a factory login |
+| FTP (21) | `USER anonymous` / `PASS` returns `230` | anonymous file access on a NAS or DVR |
+| SNMP (161) | a GET answers on the community `public` | not a guess - the default is the default |
+
+The credential list is 20 published factory pairs, tried **once each**, with a pause between
+attempts and a hard cap per device (12 by default). There are no wordlists, no repeats, no
+lockout games: this is a defaults check, not a brute-force tool.
+
+**Form logins are not guessed.** Most recorders (Hikvision, Dahua, CP Plus) use an HTML form
+or a vendor API where a wrong password and a right one look the same from outside, and
+hammering the form locks the account. Those devices get a `medium` finding that says
+"factory login page - verify by hand", so nothing is broken and nothing is claimed that was
+not proven.
+
+The password is shown in the finding (you need it to know which device to fix) but is
+**never written to the event log or the audit trail** - the log records only which device and
+which rule fired.
+
 ## 3c. Security posture — the findings that matter in a hotel
 
 `POST /api/v1/insights` and the Overview card grade the network 0-100 and list findings with
@@ -650,6 +752,44 @@ and a site with no list fell back to the main list.
 
 **If the hotel's own internet is down**, its console cannot send anything — that is what the
 heartbeat (healthchecks.io) is for, and why the hub's lost-contact mail matters.
+
+## 6g0. Backups you can actually restore
+
+```
+run.bat --backups                          list them
+run.bat --restore netsentinel-20261201.db --confirm
+```
+
+The restore verifies the file, keeps the current database as
+`netsentinel.db.pre-restore-<stamp>`, and rolls back if the new file fails `integrity_check`.
+Restart the console afterwards.
+
+## 6g. The monthly report
+
+```
+run.bat --sla-report "Udaipur - Lake Road" --sla-month 2026-11 --sla-out reports
+```
+
+or in the console: **Reports → Last month (PDF)**. The file is named
+`NetSentinel-SLA-<site>-<YYYY-MM>.pdf` and contains:
+
+| Page | Contents |
+|---|---|
+| 1 | Site, month, availability %, devices, incidents opened/resolved, MTTR, longest outage, per-device table (uptime, average and 95th-percentile latency, loss, incidents), incident list with durations, host disk bars, Wi-Fi retry bars |
+| 2 | How every number was measured — so the owner can argue with the method instead of guessing at it |
+
+Availability is the share of polls that answered; a device switched off for a week counts as
+unavailable, which is the honest reading for an SLA.
+
+## 6h. The topology map
+
+LLDP and CDP are the only reliable way to learn which switch port feeds which access point.
+The console walks both tables, matches the reported chassis id (a MAC) to a device it already
+discovered, and builds a depth-first layout from the gateway. Neighbours with no IP of their
+own are shown grey, so a map is never missing a link just because the far end was not scanned.
+
+If the map is empty, the devices are not announcing: on Cisco `cdp run` (or `lldp run`), on
+Aruba/UniFi/Omada enable LLDP in the profile, and make sure SNMP can read the device.
 
 ## 6f. Upgrading a hundred branches
 

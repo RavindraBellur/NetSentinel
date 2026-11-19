@@ -20,16 +20,27 @@ Copyright (c) 2026. All rights reserved.
    lost data or business interruption, arising from use of the software.
 
 5. DATA. The software runs on your own infrastructure. It contacts only: the public-IP
-   lookup services, the identity provider you configure, your SMTP/SIEM/Slack/Teams
-   endpoints, and any update or vendor-list URL you configure. No telemetry is sent to
-   the authors.
+   lookup services, the identity provider you configure, your SMTP/SIEM/Slack/Teams/
+   Telegram/ntfy endpoints, GitHub for signed updates, and any vendor-list URL you
+   configure. If you switch on Claude AI and enter your own Anthropic API key, the
+   evidence for each incident and the questions you ask are sent to Anthropic's API under
+   your account and its terms. No telemetry is sent to the authors.
 
-6. THIRD-PARTY COMPONENTS. The optional packages (cryptography, scapy, psutil) keep their
+6. THIRD-PARTY COMPONENTS. The optional packages (cryptography, anthropic, psutil, and scapy
+   for source installs only - it is never bundled in NetSentinel.exe) keep their
    own licences; see sbom.json. The Python standard library is used under the PSF licence.
 
-7. TERMINATION. This licence ends if you breach it. Uninstall with uninstall.cmd.
+7. ACTIVE FEATURES. Two optional features act on devices instead of only watching them:
+   the factory-password check (tries published default logins) and PoE power-cycling.
+   Both are off by default, work only on private LAN addresses you list, are rate-limited,
+   and record who switched them on. By switching one on you confirm that you own the
+   network or have written authority to test and change its devices, and you accept
+   responsibility for the effect on those devices (for example an account lockout or a
+   device restarting). Power-cycling runs in dry-run mode until you switch it to live.
 
-8. NO SUPPORT OBLIGATION unless a separate written support agreement exists.
+8. TERMINATION. This licence ends if you breach it. Uninstall with uninstall.cmd.
+
+9. NO SUPPORT OBLIGATION unless a separate written support agreement exists.
 
 Replace this file with your own agreement before distributing the software to third
 parties; this short form is a starting point, not legal advice.

@@ -17,7 +17,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from . import alerts, diagnose, netinfo, settings, store
+from . import ai, alerts, diagnose, netinfo, settings, store
 
 MONITORED_TYPES = {"router", "switch", "access_point", "dvr", "nvr", "camera", "nas", "server"}
 
@@ -152,6 +152,10 @@ class Poller(threading.Thread):
             self._last_wifi = now
             try:
                 self.scanner.refresh_wifi()
+            except Exception:
+                pass
+            try:
+                self.scanner.refresh_topology()
             except Exception:
                 pass
         self.polls += 1
@@ -335,6 +339,7 @@ class Poller(threading.Thread):
         store.add_event("monitor", severity, f"Incident opened: {inc['title']}")
         self.log(f"incident {inc['id']} opened: {inc['title']} [{severity}]")
         alerts.notify_incident(cfg, inc, self.log)
+        ai.refine_in_background(inc, ctx, store.save_incident, self.log)
         return inc
 
     def _escalate(self, inc, severity, state, latency, loss, siblings, internet, th, cfg):
@@ -351,6 +356,7 @@ class Poller(threading.Thread):
         store.add_event("monitor", severity, f"Incident escalated: {inc['title']}")
         self.log(f"incident {inc['id']} escalated to {severity}")
         alerts.notify_incident(cfg, inc, self.log)
+        ai.refine_in_background(inc, ctx, store.save_incident, self.log)
 
     def _resolve(self, inc, cfg):
         inc.update(state="resolved", closed_ts=int(time.time()), updated_ts=int(time.time()))

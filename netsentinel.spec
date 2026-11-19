@@ -8,9 +8,13 @@
 
 block_cipher = None
 
+from PyInstaller.utils.hooks import collect_submodules
+
 HIDDEN = [
     "netscan.agent", "netscan.anomaly", "netscan.posture", "netscan.push", "netscan.backup",
-    "netscan.telegram", "netscan.upgrade", "netscan.snmpv3", "netscan.wifi", "netscan.alerts", "netscan.apitokens", "netscan.auth",
+    "netscan.telegram", "netscan.upgrade", "netscan.snmpv3", "netscan.wifi", "netscan.topology",
+    "netscan.sla", "netscan.pdf", "netscan.ports", "netscan.remediation",
+    "netscan.vault", "netscan.defaults", "netscan.scheduled", "netscan.alerts", "netscan.apitokens", "netscan.auth",
     "netscan.certs", "netscan.diagnose", "netscan.discovery", "netscan.fingerprint",
     "netscan.fleet", "netscan.heartbeat", "netscan.monitor", "netscan.netflow",
     "netscan.netguard", "netscan.netinfo", "netscan.oidc", "netscan.oui",
@@ -19,19 +23,19 @@ HIDDEN = [
     "netscan.syslogrx", "netscan.tailnet", "netscan.tlsutil", "netscan.totp",
     "netscan.updater", "netscan.wan", "netscan.webui",
     # optional extras: harmless when missing, bundled when present
-    "psutil", "scapy", "cryptography", "sqlite3", "ssl", "email.mime.text",
+    "psutil", "anthropic", "cryptography", "sqlite3", "ssl", "email.mime.text",
 ]
 
 a = Analysis(
     ["netsentinel.py"],
     pathex=[],
     binaries=[],
-    datas=[("netscan", "netscan"), ("README.md", "."), ("EULA.txt", "."), ("sbom.json", ".")],
-    hiddenimports=HIDDEN,
+    datas=[("netscan", "netscan"), ("netscan/static", "netscan/static"), ("README.md", "."), ("EULA.txt", "."), ("sbom.json", ".")],
+    hiddenimports=HIDDEN + collect_submodules("anthropic"),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tkinter", "matplotlib", "numpy", "PIL"],
+    excludes=["tkinter", "matplotlib", "numpy", "PIL", "scapy"],  # scapy is GPL: never bundled
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

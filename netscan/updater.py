@@ -51,10 +51,15 @@ REPO = "RavindraBellur/NetSentinel"
 LATEST_URL = f"https://github.com/{REPO}/releases/latest/download/latest.json"
 ASSET_URL = f"https://github.com/{REPO}/releases/download/{{tag}}/{{file}}"
 # Testing / private mirror: serve latest.json and the files from one folder. Signatures still apply.
+PUBLIC_KEY = "puWgDRWq+YSDNEQgYUcBHBVpzmKhoXA0i7qgkzhG7FE="
 if os.environ.get("NETSENTINEL_UPDATE_BASE"):
     _base = os.environ["NETSENTINEL_UPDATE_BASE"].rstrip("/")
     LATEST_URL, ASSET_URL = _base + "/latest.json", _base + "/{file}"
-PUBLIC_KEY = "puWgDRWq+YSDNEQgYUcBHBVpzmKhoXA0i7qgkzhG7FE="
+    # Automated tests sign with their own throw-away key. Accepted ONLY for a mirror on this
+    # very PC, so it can never be used to accept updates from anywhere else.
+    if os.environ.get("NETSENTINEL_UPDATE_TEST_KEY") and \
+            _base.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0] in ("127.0.0.1", "localhost"):
+        PUBLIC_KEY = os.environ["NETSENTINEL_UPDATE_TEST_KEY"]
 
 CHECK_EVERY = 6 * 3600
 FIRST_CHECK_AFTER = 120
@@ -461,5 +466,22 @@ def selftest():
     except OSError as exc:
         print(f"selftest: FAILED - the running exe can't be renamed ({exc})")
         return 1
-    print(f"selftest: ok - mode {install_mode()}, key {'set' if not PUBLIC_KEY.startswith('__') else 'MISSING'}")
-    return 0 if not PUBLIC_KEY.startswith("__") else 1
+    problems = []
+    try:  # Claude SDK bundled and able to build a client (no network call)
+        import anthropic
+        anthropic.Anthropic(api_key="selftest")
+        ai_state = f"anthropic {anthropic.__version__}"
+    except Exception as exc:
+        ai_state = f"MISSING ({exc.__class__.__name__})"
+        problems.append("anthropic")
+    try:
+        import scapy  # noqa: F401
+        problems.append("scapy is bundled (GPL) - it must not be")
+    except ImportError:
+        pass
+    if PUBLIC_KEY.startswith("__"):
+        problems.append("update key")
+    print(f"selftest: {'ok' if not problems else 'FAILED'} - mode {install_mode()}, "
+          f"key {'set' if not PUBLIC_KEY.startswith('__') else 'MISSING'}, AI {ai_state}, scapy not bundled"
+          + (f" | problems: {', '.join(problems)}" if problems else ""))
+    return 0 if not problems else 1
