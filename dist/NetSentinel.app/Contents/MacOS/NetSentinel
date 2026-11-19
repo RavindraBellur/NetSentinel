@@ -1,0 +1,13 @@
+#!/bin/bash
+# NetSentinel - macOS launcher
+DIR="$(cd "$(dirname "$0")/../Resources/app" && pwd)"
+cd "$DIR" || exit 1
+if [ ! -x ".venv/bin/python" ]; then
+  osascript -e 'display notification "First run: installing, this takes a minute" with title "NetSentinel"' 2>/dev/null
+  ./install-mac.sh >> "$HOME/Library/Logs/NetSentinel-install.log" 2>&1
+fi
+if [ ! -x ".venv/bin/python" ]; then
+  osascript -e 'display alert "NetSentinel" message "Setup failed. See ~/Library/Logs/NetSentinel-install.log"'
+  exit 1
+fi
+exec .venv/bin/python netsentinel.py "$@"
