@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover
     Ed25519PrivateKey = None
 
 ROOT = _env.ROOT
-TOP = ["netscan", "netsentinel.py", "requirements.txt", "README.md", "EULA.txt", "sbom.json"]
+TOP = ["netscan", "netsentinel.py", "requirements.txt", "README.md", "EULA.txt", "sbom.json", "LIMITS.md"]
 with open(os.path.join(ROOT, "netscan", "__init__.py"), encoding="utf-8") as _fh:
     CURRENT = re.search(r'__version__ = "([^"]+)"', _fh.read()).group(1)
 

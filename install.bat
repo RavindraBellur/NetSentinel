@@ -4,7 +4,7 @@ cd /d "%~dp0"
 title NetSentinel - installer
 
 echo ============================================================
-echo   NetSentinel 1.26.0 - installer
+echo   NetSentinel 1.27.0 - installer
 echo ============================================================
 echo.
 

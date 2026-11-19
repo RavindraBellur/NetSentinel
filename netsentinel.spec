@@ -30,7 +30,7 @@ a = Analysis(
     ["netsentinel.py"],
     pathex=[],
     binaries=[],
-    datas=[("netscan", "netscan"), ("netscan/static", "netscan/static"), ("README.md", "."), ("EULA.txt", "."), ("sbom.json", ".")],
+    datas=[("netscan", "netscan"), ("netscan/static", "netscan/static"), ("README.md", "."), ("EULA.txt", "."), ("LIMITS.md", "."), ("sbom.json", ".")],
     hiddenimports=HIDDEN + collect_submodules("anthropic"),
     hookspath=[],
     hooksconfig={},

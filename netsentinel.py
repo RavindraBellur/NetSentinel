@@ -178,10 +178,21 @@ def main(argv=None):
     parser.add_argument("--update-now", action="store_true",
                         help="download and install the newest NetSentinel, then exit (start it again after)")
     parser.add_argument("--selftest-update", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--limits", action="store_true", help="print the known limits of this build and exit")
     args = parser.parse_args(argv)
 
     if args.selftest_update:
         return updater_mod.selftest()
+
+    if args.limits:
+        for base in (os.path.dirname(os.path.abspath(__file__)), getattr(sys, "_MEIPASS", "")):
+            lp = os.path.join(base, "LIMITS.md") if base else ""
+            if lp and os.path.exists(lp):
+                with open(lp, encoding="utf-8") as fh:
+                    print(fh.read())
+                return 0
+        print("LIMITS.md is not installed next to this program")
+        return 1
 
     if args.check_update or args.update_now:
         upd = updater_mod.Updater(lambda: settings.get("update"), log=lambda m: print("  " + m))
@@ -559,15 +570,24 @@ def main(argv=None):
     if not args.serve:
         sc.start_scan()
 
-    # Sign-in: on when asked, and automatically whenever the dashboard is shared on the LAN.
-    auth_enabled = bool(args.auth or (bind_host == "0.0.0.0" and not args.no_auth)
-                        or (settings.get("oidc") or {}).get("enabled"))
+    # Sign-in is always required (since 1.27), on this PC too. --no-auth is for development only.
+    auth_enabled = not args.no_auth
+    if args.no_auth:
+        print("  WARNING: --no-auth - anyone who can open the dashboard controls NetSentinel.")
+    from netscan import osauth
+    windows_login = osauth.available() and (settings.get("auth") or {}).get("windows_login", True)
     if auth_enabled:
         created = auth.ensure_admin()
         if created:
             print()
             print("  " + "=" * 56)
-            print("   First run: a dashboard account was created")
+            if windows_login:
+                print("   Sign in with your Windows administrator account")
+                print("   (the user name and password you use to log in to this PC).")
+                print()
+                print("   A spare NetSentinel account was also created:")
+            else:
+                print("   First run: a dashboard account was created")
             print(f"   user      : {created[0]}")
             print(f"   password  : {created[1]}")
             print("   Change it in Settings, or run: netsentinel.py --set-password YOURPASS")
@@ -619,7 +639,7 @@ def main(argv=None):
         print(f"  SSO         : NOT ACTIVE - {webui.serve.oidc_error}")
     elif sso_cfg.get("enabled"):
         print(f"  SSO         : {sso_cfg.get('issuer')} (roles from '{sso_cfg.get('role_claim')}')")
-    print(f"  sign-in     : {'required' if auth_enabled else 'not required (localhost only)'}")
+    print(f"  sign-in     : {('required - Windows administrators of this PC, or NetSentinel accounts' if windows_login else 'required') if auth_enabled else 'OFF (--no-auth)'}")
     print(f"  transport   : {'HTTPS (TLS on)' if tls_arg else 'HTTP - use --tls for HTTPS'}")
     _tail = tailnet.summary()
     if _tail:

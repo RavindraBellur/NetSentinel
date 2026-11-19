@@ -67,7 +67,8 @@ HEALTHY_AFTER = 180
 HANDOFF_WATCH = 25
 MAX_FAILED_STARTS = 3
 MAX_SIZE = 80 * 1024 * 1024
-APP_TOP = {"netscan", "netsentinel.py", "requirements.txt", "README.md", "EULA.txt", "sbom.json"}
+APP_TOP = {"netscan", "netsentinel.py", "requirements.txt", "README.md", "EULA.txt", "sbom.json",
+           "LIMITS.md"}
 IS_WINDOWS = platform.system() == "Windows"
 UPDATE_DIR = os.path.join(CONFIG_DIR, "update")
 PENDING = os.path.join(UPDATE_DIR, "pending.json")

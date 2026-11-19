@@ -9,6 +9,8 @@ import sys
 import tempfile
 import time
 import unittest
+import http.cookiejar
+import urllib.parse
 import urllib.request
 
 from tests import _env
@@ -29,17 +31,32 @@ class Console(unittest.TestCase):
                         "from netscan import settings; settings.save({'telegram': {'token': 'tg-SECRET'},"
                         "'snmp_v3': {'auth_password': 'v3-SECRET'}, 'ai': {'api_key': 'sk-ant-SECRET'}})"],
                        cwd=_env.ROOT, env=env, check=True, timeout=60)
+        subprocess.run([sys.executable, "netsentinel.py", "--set-password", "Test-pass-123"],
+                       cwd=_env.ROOT, env=env, check=True, timeout=60, capture_output=True)
         cls.log = open(os.path.join(cls.home, "console.log"), "w")
         cls.proc = subprocess.Popen([sys.executable, "netsentinel.py", "--serve", "--no-browser", "--no-capture",
                                      "--no-monitor", "--rescan-every", "0", "--port", str(cls.port)],
                                     cwd=_env.ROOT, env=env, stdout=cls.log, stderr=subprocess.STDOUT)
+        cls.jar = http.cookiejar.CookieJar()
+        cls.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cls.jar))
         for _ in range(120):
             try:
-                cls.get("/api/state")
-                return
+                urllib.request.urlopen(f"http://127.0.0.1:{cls.port}/login", timeout=5).read()
+                break
             except Exception:
                 time.sleep(0.5)
-        raise RuntimeError("console did not start")
+        else:
+            raise RuntimeError("console did not start")
+        cls.sign_in("admin", "Test-pass-123")
+
+    @classmethod
+    def sign_in(cls, user, password, opener=None):
+        data = urllib.parse.urlencode({"username": user, "password": password}).encode()
+        try:
+            r = (opener or cls.opener).open(f"http://127.0.0.1:{cls.port}/login", data=data, timeout=30)
+            return r.status
+        except urllib.error.HTTPError as e:
+            return e.code
 
     @classmethod
     def tearDownClass(cls):
@@ -52,7 +69,7 @@ class Console(unittest.TestCase):
 
     @classmethod
     def get(cls, path):
-        with urllib.request.urlopen(f"http://127.0.0.1:{cls.port}{path}", timeout=10) as r:
+        with cls.opener.open(f"http://127.0.0.1:{cls.port}{path}", timeout=10) as r:
             return r.read()
 
     def post(self, path, body=None, csrf=True):
@@ -60,7 +77,7 @@ class Console(unittest.TestCase):
                                      method="POST", headers={"Content-Type": "application/json",
                                                              **({"X-NS": "1"} if csrf else {})})
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with self.opener.open(req, timeout=30) as r:
                 return r.status, json.loads(r.read())
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"{}")
@@ -101,6 +118,21 @@ class Console(unittest.TestCase):
     def test_password_check_refused_until_confirmed(self):
         code, body = self.post("/api/defaults/check")
         self.assertEqual(body.get("state"), "refused")
+
+    def test_sign_in_always_required(self):
+        anon = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        try:
+            anon.open(f"http://127.0.0.1:{self.port}/api/state", timeout=10)
+            self.fail("anonymous /api/state was allowed")
+        except urllib.error.HTTPError as e:
+            self.assertIn(e.code, (401, 403))
+
+    def test_lockout_really_blocks(self):
+        # a fresh client: 5 wrong passwords, then even the RIGHT password is refused
+        ip_opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        codes = [self.sign_in("admin", f"wrong-{i}", ip_opener) for i in range(5)]
+        self.assertTrue(all(c == 401 for c in codes), codes)
+        self.assertEqual(self.sign_in("admin", "Test-pass-123", ip_opener), 429)
 
     def test_pwa_files_served(self):
         self.assertIn(b"NetSentinel", self.get("/manifest.json"))

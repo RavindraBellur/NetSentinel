@@ -21,8 +21,8 @@ INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
   <key>CFBundleName</key><string>NetSentinel</string>
   <key>CFBundleDisplayName</key><string>NetSentinel</string>
   <key>CFBundleIdentifier</key><string>in.hotelgroup.netsentinel</string>
-  <key>CFBundleVersion</key><string>1.26.0</string>
-  <key>CFBundleShortVersionString</key><string>1.26.0</string>
+  <key>CFBundleVersion</key><string>1.27.0</string>
+  <key>CFBundleShortVersionString</key><string>1.27.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>NetSentinel</string>
   <key>CFBundleIconFile</key><string>netsentinel</string>

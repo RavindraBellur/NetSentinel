@@ -1,4 +1,4 @@
-# NetSentinel 1.26
+# NetSentinel 1.27
 
 
 A network operations console for a small or mid-size office that runs on one PC, on
@@ -20,7 +20,16 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 
 ---
 
-## What's new in 1.26 — Claude diagnosis, safety rails, and proof
+## What's new in 1.27 — Windows sign-in, Update now, known limits
+
+| Change | What it does |
+|---|---|
+| **Sign in with Windows** | Sign-in is now always required, on the PC itself too. Use your normal Windows account and password (`ravi`, `OFFICE\ravi` or `ravi@domain`) — Windows checks the password, NetSentinel never stores it. Administrators of the PC get admin rights; other Windows users are refused unless Settings allows them Viewer or Engineer. NetSentinel's own accounts keep working. Proven on the build machine against a real administrator and a real standard account. |
+| **Lockout that actually locks** | After five wrong passwords the sign-in form now refuses the next attempt *before* checking it — before, the counter only changed the message and guessing could continue. |
+| **Update now** | When a signed new version is out, admins see **Update now to x.y.z** in the header: confirm, it installs, restarts and reloads by itself. If the new version does not start, the current one is put back. |
+| **Known limits** | Settings → *Known limits*, `/limits.md`, or `run.bat --limits`: what is proven and how, what has never run on real equipment, and what is not built. Shipped as `LIMITS.md`. |
+
+## What was new in 1.26 — Claude diagnosis, safety rails, and proof
 
 | Change | What it does |
 |---|---|

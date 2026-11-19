@@ -10,6 +10,7 @@ import json
 import os
 import tempfile
 import subprocess
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -240,10 +241,14 @@ function head(){
   document.getElementById('h-right').innerHTML=
     '<span class="pill">'+stDot(h.down?'down':(h.degraded?'degraded':'up'))+'health '+h.score+'%</span>'+
     '<span class="pill">'+sev+'</span>'+
-    (d.update&&['available','updating','restarting'].indexOf(d.update.status)>=0&&can('settings')?
-      '<a class="pill" href="#settings" title="Settings → Updates">'+
-      (d.update.status==='available'?'update '+esc(d.update.latest)+' available':'updating to '+esc(d.update.latest)+' ...')+
-      '</a>':'')+
+    (d.update&&d.update.status==='available'&&d.update.can_install&&can('settings')?
+      '<button class="sm primary" onclick="updateNow()" title="Install the signed release and restart">'+
+      'Update now to '+esc(d.update.latest)+'</button>':'')+
+    (d.update&&['updating','restarting'].indexOf(d.update.status)>=0?
+      '<span class="pill">updating to '+esc(d.update.latest)+' ...</span>':'')+
+    (d.update&&d.update.status==='available'&&!d.update.can_install&&can('settings')?
+      '<a class="pill" href="'+esc(d.update.notes_url)+'" target="_blank" rel="noopener">'+
+      'version '+esc(d.update.latest)+' available - download</a>':'')+
     (d.ai&&d.ai.enabled?'<button class="sm" onclick="openAsk()">Ask AI</button>':'')+
     (can('scan')?'<button class="sm" onclick="rescan()">Rescan</button>':'')+
     (d.auth&&d.auth.enabled&&d.auth.user?
@@ -1092,6 +1097,9 @@ function viewSettings(){
      'below to prove every channel works.</div>'+
    '</div>'+
    aiCard(s.ai||{})+
+   '<div class="card" style="margin-top:14px"><h2>Known limits</h2><div class="small muted" style="margin-bottom:8px">'+
+     'What is proven, what has never run on real equipment, and what is not built - stated plainly.</div>'+
+     '<button class="sm" onclick="window.open(\'/limits.md\',\'_blank\')">Read the known limits</button></div>'+
    updateCard(s.update||{})+
    '<div class="card" style="margin-top:14px"><h2>Heartbeat (dead-man\'s switch)</h2>'+
      chk('Ping an outside service so you are told when this whole site goes dark','hben',
@@ -1135,7 +1143,12 @@ function viewSettings(){
      '<div class="field"><label>Webhook minimum severity</label><select id="whsev">'+
        ['low','medium','high','critical'].map(function(v){return '<option '+(wh.min_severity===v?'selected':'')+
        '>'+v+'</option>';}).join('')+'</select></div>'+
-     chk('Require sign-in','auen',au.enabled)+
+     '<div class="small muted" style="margin:8px 0 4px">Sign-in is always required.</div>'+
+     chk('Allow sign-in with Windows accounts of this PC (administrators get admin)','auwin',au.windows_login!==false)+
+     '<div class="field"><label>Other Windows users (not administrators)</label><select id="auwinrole">'+
+       [['none','Refused'],['viewer','Viewer (read only)'],['engineer','Engineer']].map(function(o){
+         return '<option value="'+o[0]+'" '+((au.windows_users_role||'none')===o[0]?'selected':'')+'>'+o[1]+'</option>';}).join('')+
+     '</select></div>'+
      '<div class="small muted" style="margin:8px 0 6px">'+
        ((S.data.users||[]).length)+' account(s) - manage them in the '+
        '<a href="#users">Users</a> view</div>'+
@@ -1259,6 +1272,23 @@ function updateCard(cfg){
         esc(u.latest)+' now</button>':'')+
       '<span id="upmsg" class="small muted"></span></div></div>';
 }
+function updateNow(){
+  var u=(S.data||{}).update||{};
+  if(!confirm('Install NetSentinel '+u.latest+' now?\n\nIt is signed and checked before installing. '+
+    'The console restarts and is back in about a minute; if the new version does not start, the current '+
+    'one is put back automatically.')) return;
+  api('/api/update/install',{method:'POST',body:'{}'}).then(function(r){
+    var box=document.getElementById('h-right');
+    if(box) box.insertAdjacentHTML('afterbegin','<span class="pill">'+esc(r.message||'installing ...')+'</span>');
+    var tries=0, t=setInterval(function(){
+      tries++;
+      fetch('/api/state').then(function(x){return x.json();}).then(function(d){
+        if(d.version===u.latest){ clearInterval(t); location.reload(); }
+      }).catch(function(){});
+      if(tries>60) clearInterval(t);
+    },5000);
+  });
+}
 function updateAction(kind){
   var el=document.getElementById('upmsg'); el.textContent=kind==='install'?'starting ...':'checking ...';
   api('/api/update/'+kind,{method:'POST',body:'{}'}).then(function(r){
@@ -1286,7 +1316,8 @@ function saveSettings(){
       min_severity:(document.getElementById('emsev')||{}).value||'medium'},
     webhook:{enabled:chkVal('when'),url:strVal('whu'),
       min_severity:(document.getElementById('whsev')||{}).value||'high'},
-    auth:{enabled:chkVal('auen')},
+    auth:{enabled:true,windows_login:chkVal('auwin'),
+          windows_users_role:(document.getElementById('auwinrole')||{}).value||'none'},
     push:{enabled:chkVal('pnben'),
           provider:(document.getElementById('pnprov')||{}).value||'ntfy',
           topic:strVal('pntopic'),url:strVal('pnurl'),
@@ -1615,6 +1646,7 @@ FORM_PASSWORD = """<form method="post" action="/login" id="loginform">
       <div class="field"><label>Password</label>
         <input type="password" name="password" autocomplete="current-password"></div>
       <button class="primary" type="submit" id="signin">Sign in</button>
+      __WINHINT__
     </form>"""
 
 FORM_TOTP = """<form method="post" action="/login" id="loginform">
@@ -1670,9 +1702,16 @@ def login_page(error="", sso=None, pending="", who=""):
         block = (f'<a class="sso" href="/auth/login">{label}</a>'
                  '<div class="orsep"><span>or use a local account</span></div>')
     form = (FORM_TOTP.format(who=who, pending=pending) if pending else FORM_PASSWORD)
+    from . import osauth
+    hint = ""
+    if osauth.available() and (settings.get("auth") or {}).get("windows_login", True):
+        hint = ('<div class="small muted" style="margin-top:10px">Use your Windows account on this PC '
+                '(for example <b>ravi</b> or <b>OFFICE\\ravi</b>) and its Windows password. '
+                'Administrators of this PC get full access.</div>')
+    form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.26.0"))
+            .replace("__VERSION__", "1.27.0"))
 
 
 def app_page(version):
@@ -1953,6 +1992,16 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send(500, f"report failed: {exc}", "text/plain")
                 return
+        if path == "/limits.md":
+            if self._guard() is None:
+                return
+            here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            for base in (here, getattr(sys, "_MEIPASS", "")):
+                lp = os.path.join(base, "LIMITS.md") if base else ""
+                if lp and os.path.exists(lp):
+                    with open(lp, "rb") as fh:
+                        return self._send(200, fh.read(), "text/plain; charset=utf-8")
+            return self._send(404, b"LIMITS.md is not installed", "text/plain")
         if path == "/api/history":
             if self._guard() is None:
                 return
@@ -2093,7 +2142,30 @@ class Handler(BaseHTTPRequestHandler):
                                    + ("; Secure" if self.tls_active else "")})
 
             # ---- first step: user name and password
+            wait = auth.locked(self.client_ip)
+            if wait:   # refuse BEFORE checking anything, so a locked-out address cannot keep guessing
+                return self._send(429, login_page("Too many failed attempts. Try again in %d minutes."
+                                                  % (wait // 60 + 1)), "text/html; charset=utf-8")
             user = store.check_user(username, password)
+            if not user and (settings.get("auth") or {}).get("windows_login", True):
+                from . import osauth
+                if osauth.available():
+                    ok, is_admin, display, why = osauth.check(username, password)
+                    if ok:
+                        role = osauth.role_for(is_admin, settings.load())
+                        if not role:
+                            store.add_event("auth", "medium", f"Windows sign-in refused for {display}: "
+                                                              "not an administrator of this PC")
+                            return self._send(403, login_page(
+                                "Only administrators of this PC can sign in with Windows. Ask an "
+                                "administrator to add you as a NetSentinel user."), "text/html; charset=utf-8")
+                        auth.clear_failures(self.client_ip)
+                        token = auth.login_sso(display, role, self.session_hours, provider="windows")
+                        store.add_event("auth", "info", f"Windows sign-in: {display} as {role}")
+                        return self._send(302, b"", "text/plain",
+                                          {"Location": "/", "Set-Cookie":
+                                           f"ns_session={token}; Path=/; HttpOnly; SameSite=Strict"
+                                           + ("; Secure" if self.tls_active else "")})
             if not user:
                 auth.note_failure(self.client_ip)
                 wait = auth.locked(self.client_ip)
@@ -2122,6 +2194,7 @@ class Handler(BaseHTTPRequestHandler):
                                f"ns_session={token}; Path=/; HttpOnly; SameSite=Strict"
                                + ("; Secure" if self.tls_active else "")})
         if path == "/api/login":
+            # JSON sign-in for scripts: NetSentinel accounts only (Windows sign-in uses the form)
             token, err = auth.login(self.client_ip, payload.get("username", ""),
                                     payload.get("password", ""), self.session_hours)
             if not token:
@@ -2499,7 +2572,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.26.0", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.27.0", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""
