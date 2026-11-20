@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.33.1
+# Prahari · प्रहरी — 1.34.0
 
 *the watchman on your network*
 
@@ -21,6 +21,15 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.34.0 — keeps running when the window is closed
+
+- On first start (Windows) Prahari asks "Run in the background?". Yes (as administrator) registers a Windows task
+  that starts Prahari at boot as SYSTEM - no window, nobody needs to be logged in, no 3-day time limit, restarted
+  within a minute if it stops - using the same data (organisation key, users, settings) via --home.
+  The program is copied to C:\ProgramData\Prahari so moving the download does not break it.
+- Starting Prahari.exe again while it runs in the background just points to the dashboard (no second copy).
+- Manual control, as administrator: Prahari.exe --install-service / --remove-service.
 
 ## What's new in 1.33.1 — a lighter dashboard
 

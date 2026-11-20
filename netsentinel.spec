@@ -13,7 +13,7 @@ from PyInstaller.utils.hooks import collect_submodules
 HIDDEN = [
     "netscan.agent", "netscan.anomaly", "netscan.posture", "netscan.push", "netscan.backup",
     "netscan.telegram", "netscan.upgrade", "netscan.snmpv3", "netscan.wifi", "netscan.topology",
-    "netscan.sla", "netscan.pdf", "netscan.ports", "netscan.remediation",
+    "netscan.sla", "netscan.service", "netscan.pdf", "netscan.ports", "netscan.remediation",
     "netscan.vault", "netscan.defaults", "netscan.scheduled", "netscan.sensors", "netscan.mirror", "netscan.alerts", "netscan.apitokens", "netscan.auth",
     "netscan.certs", "netscan.diagnose", "netscan.discovery", "netscan.fingerprint",
     "netscan.fleet", "netscan.heartbeat", "netscan.monitor", "netscan.netflow",

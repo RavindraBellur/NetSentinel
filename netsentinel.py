@@ -23,6 +23,20 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+
+def _early_home():
+    """--home DIR: use DIR\.netsentinel for data. Set before netscan is imported, because its modules read the
+    home folder at import. The background task uses it to keep the data of the person who set it up."""
+    if "--home" in sys.argv:
+        i = sys.argv.index("--home")
+        if i + 1 < len(sys.argv):
+            home = sys.argv[i + 1]
+            os.environ["USERPROFILE"] = home
+            os.environ["HOME"] = home
+
+
+_early_home()
+
 from netscan import __version__, apitokens, auth, netinfo, oui, settings, sites, store  # noqa: E402
 from netscan import certs as certs_mod, fleet as fleet_mod, tailnet, tlsutil  # noqa: E402
 from netscan import scanner as scanner_mod, webui  # noqa: E402
@@ -80,6 +94,10 @@ def main(argv=None):
     parser.add_argument("--host", default="127.0.0.1", help="bind address (0.0.0.0 = reachable from other devices)")
     parser.add_argument("--lan", action="store_true", help="same as --host 0.0.0.0: open the dashboard from your laptop/phone")
     parser.add_argument("--no-browser", action="store_true", help="do not open the dashboard window")
+    parser.add_argument("--home", metavar="DIR", help="use DIR\\.netsentinel for Prahari's data (set by the background task)")
+    parser.add_argument("--background", action="store_true", help="run without a window (the Windows background task uses this)")
+    parser.add_argument("--install-service", action="store_true", help="Windows: keep Prahari running in the background (as administrator)")
+    parser.add_argument("--remove-service", action="store_true", help="Windows: stop running Prahari in the background (as administrator)")
     parser.add_argument("--browser", action="store_true", help="open in a normal browser tab instead of an app window")
     parser.add_argument("--rescan-every", type=int, default=600, metavar="SECONDS",
                         help="re-scan the network automatically (0 = never, default 600)")
@@ -180,6 +198,30 @@ def main(argv=None):
     parser.add_argument("--selftest-update", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--limits", action="store_true", help="print the known limits of this build and exit")
     args = parser.parse_args(argv)
+    from netscan import service as service_mod
+    if args.background:
+        args.no_browser = True
+    if args.install_service or args.remove_service:
+        if args.remove_service:
+            ok, msg = service_mod.remove()
+        else:
+            ok, msg, _exe = service_mod.install(os.path.expanduser("~"), extra_args=["--lan"] if args.lan else [])
+            if ok:
+                service_mod.start()
+        print("  " + msg)
+        return 0 if ok else 1
+    # Prahari already runs in the background on this PC: do not start a second copy, point to it instead.
+    if not args.background and service_mod.supported() and service_mod.installed() and service_mod.port_busy(args.port):
+        print()
+        print("  Prahari is already running in the background on this PC.")
+        print(f"  Open the dashboard: http://127.0.0.1:{args.port}/   (this window can be closed)")
+        print("  To stop running it in the background: Prahari.exe --remove-service (as administrator)")
+        try:
+            if sys.stdin and sys.stdin.isatty():
+                input("\n  Press Enter to close ")
+        except Exception:
+            pass
+        return 0
 
     if args.selftest_update:
         return updater_mod.selftest()
@@ -679,7 +721,7 @@ def main(argv=None):
     else:
         print(f"  updates     : checked every 6 hours, {'installed automatically' if upd.auto_install else 'installed when you choose'}")
     sc.ensure_branch_reporter()        # report to the portal from the start, not only after the first scan
-    _ask_portal_in_console(sc)
+    _ask_portal_in_console(sc, httpd, args)
     print("  leave this window open. Press Ctrl+C to stop.\n")
     try:
         httpd.serve_forever()
@@ -694,20 +736,68 @@ def main(argv=None):
     if upd.restart_requested:
         print(f"  updated to {upd.latest} - starting the new version ...")
         return upd.handoff()
+    if getattr(sc, "to_background", False):
+        ok, msg = service_mod.start()
+        print()
+        print("  " + "=" * 56)
+        print("   Prahari now runs in the background." if ok else "   Could not start the background task: " + msg)
+        print("   Dashboard: http://127.0.0.1:8777/   - you can close this window.")
+        print("  " + "=" * 56)
+        try:
+            input("\n  Press Enter to close ")
+        except Exception:
+            pass
     return 0
 
 
-def _ask_portal_in_console(sc):
-    """First start in a console: ask for the Prahari portal token, while the dashboard already runs."""
+def _ask_portal_in_console(sc, httpd=None, args=None):
+    """First start in a console: ask for the Prahari portal key, then whether to keep Prahari running in the
+    background - while the dashboard already runs."""
     try:
         interactive = sys.stdin is not None and sys.stdin.isatty()
     except Exception:
         interactive = False
-    if not interactive or sites.branch_target()[0] or (settings.get("portal") or {}).get("asked"):
+    if not interactive or (args is not None and args.background):
         return
+    need_portal = not sites.branch_target()[0] and not (settings.get("portal") or {}).get("asked")
+    from netscan import service as service_mod
+    need_bg = service_mod.supported() and not service_mod.installed() and not (settings.get("background") or {}).get("declined")
+    if not need_portal and not need_bg:
+        return
+
+    def ask_background():
+        print()
+        print("  " + "=" * 56)
+        print("   KEEP PRAHARI RUNNING IN THE BACKGROUND?")
+        print("   Recommended for a server: it keeps watching when this window is closed,")
+        print("   after restarts, and with nobody logged in.")
+        print("  " + "=" * 56)
+        try:
+            yes = input("   Run in the background? [Y/n]: ").strip().lower() in ("", "y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            return
+        if not yes:
+            settings.save({"background": {"declined": True}})
+            print("   OK - Prahari runs only while this window is open. (Later: Prahari.exe --install-service)\n")
+            return
+        ok, msg, _exe = service_mod.install(os.path.expanduser("~"), extra_args=["--lan"] if (args is not None and args.lan) else [])
+        if not ok:
+            print("   " + msg + "\n")
+            return
+        print("   " + msg)
+        print("   Moving to the background ...")
+        sc.to_background = True
+        if httpd is not None:
+            threading.Thread(target=httpd.shutdown, daemon=True).start()
 
     def ask():
         time.sleep(1.0)
+        if need_portal:
+            ask_portal()
+        if need_bg:
+            ask_background()
+
+    def ask_portal():
         print()
         print("  " + "=" * 56)
         print("   CONNECT THIS SITE TO THE PRAHARI PORTAL")
@@ -732,7 +822,7 @@ def _ask_portal_in_console(sc):
         if not ok:
             print("   You can try again on the dashboard's Overview page.\n")
 
-    threading.Thread(target=ask, daemon=True, name="portal-prompt").start()
+    threading.Thread(target=ask, daemon=True, name="first-start-questions").start()
 
 
 if __name__ == "__main__":
