@@ -22,6 +22,27 @@ class HomeFolder(unittest.TestCase):
         self.assertTrue(os.listdir(os.path.join(home, ".netsentinel")))
 
 
+class DesktopIcon(unittest.TestCase):
+    def test_shortcut_opens_the_dashboard_and_is_written_once(self):
+        d = tempfile.mkdtemp(prefix="desk-")
+        path = service.ensure_shortcut(8777, exe=r"C:\ProgramData\Prahari\Prahari.exe", folder=d)
+        self.assertTrue(path.endswith("Prahari.url"))
+        text = open(path, encoding="utf-8").read()
+        self.assertIn("URL=http://127.0.0.1:8777/", text)
+        self.assertIn("IconFile=C:\\ProgramData\\Prahari\\Prahari.exe", text)
+        before = os.path.getmtime(path)
+        self.assertEqual(service.ensure_shortcut(8777, exe=r"C:\ProgramData\Prahari\Prahari.exe", folder=d), path)
+        self.assertEqual(os.path.getmtime(path), before, "not rewritten when unchanged")
+
+    def test_report_always_names_its_version(self):
+        from netscan import sites, __version__
+
+        class S:
+            def snapshot(self):
+                return {"health": {}, "devices": [], "open_incidents": [], "traffic": {}, "internet": []}
+        self.assertEqual(sites.summary(S())["version"], __version__)
+
+
 @unittest.skipUnless(os.name == "nt" and service.is_admin(), "Windows with administrator rights only (runs on CI)")
 class WindowsTask(unittest.TestCase):
     def tearDown(self):

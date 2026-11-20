@@ -11,7 +11,7 @@ setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 title Prahari - build setup exe
 
-set "VER=1.34.0"
+set "VER=1.34.1"
 set "DIST=%CD%\dist"
 set "STAGE=%DIST%\staging"
 set "OUT=%DIST%\Prahari-Setup-%VER%.exe"

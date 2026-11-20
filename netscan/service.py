@@ -106,6 +106,39 @@ def remove():
     return code == 0, ("Background mode removed - Prahari no longer starts with Windows." if code == 0 else out.strip())
 
 
+def desktop_dirs():
+    """The shared desktop (every user of this PC sees it), else this user's desktop."""
+    dirs = []
+    public = os.environ.get("PUBLIC")
+    if public:
+        dirs.append(os.path.join(public, "Desktop"))
+    dirs.append(os.path.join(os.path.expanduser("~"), "Desktop"))
+    return dirs
+
+
+def ensure_shortcut(port=8777, exe=None, folder=None):
+    """A 'Prahari' icon on the desktop that opens the dashboard. Returns the file written, or ''."""
+    content = ("[InternetShortcut]\r\nURL=http://127.0.0.1:%d/\r\nIconFile=%s\r\nIconIndex=0\r\n"
+               % (port, exe or os.path.join(install_dir(), "Prahari.exe")))
+    for d in ([folder] if folder else desktop_dirs()):
+        try:
+            if not os.path.isdir(d):
+                continue
+            path = os.path.join(d, "Prahari.url")
+            try:
+                with open(path, encoding="utf-8", newline="") as f:
+                    if f.read() == content:
+                        return path
+            except OSError:
+                pass
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(content)
+            return path
+        except OSError:
+            continue
+    return ""
+
+
 def port_busy(port=8777):
     import socket
     s = socket.socket()

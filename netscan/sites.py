@@ -95,7 +95,7 @@ def summary(scanner):
     public = snap.get("public") or {}
     payload = {
         "site": settings.get("site_name") or local.get("ip") or "branch",
-        "version": snap.get("version") or "",
+        "version": snap.get("version") or __import__("netscan").__version__,
         "ts": int(time.time()),
         "health": health,
         "counts": snap.get("counts") or {},

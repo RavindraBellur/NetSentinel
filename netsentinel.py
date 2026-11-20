@@ -207,6 +207,7 @@ def main(argv=None):
         else:
             ok, msg, _exe = service_mod.install(os.path.expanduser("~"), extra_args=["--lan"] if args.lan else [])
             if ok:
+                service_mod.ensure_shortcut(args.port)
                 service_mod.start()
         print("  " + msg)
         return 0 if ok else 1
@@ -222,6 +223,12 @@ def main(argv=None):
         except Exception:
             pass
         return 0
+
+    if args.background and service_mod.supported():
+        try:
+            service_mod.ensure_shortcut(args.port)   # installs set up before 1.34.1 get the icon too
+        except Exception:
+            pass
 
     if args.selftest_update:
         return updater_mod.selftest()
@@ -785,6 +792,8 @@ def _ask_portal_in_console(sc, httpd=None, args=None):
             print("   " + msg + "\n")
             return
         print("   " + msg)
+        if service_mod.ensure_shortcut(args.port if args is not None else 8777):
+            print("   A 'Prahari' icon on the desktop opens the dashboard.")
         print("   Moving to the background ...")
         sc.to_background = True
         if httpd is not None:

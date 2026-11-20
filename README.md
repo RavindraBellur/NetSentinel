@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.34.0
+# Prahari · प्रहरी — 1.34.1
 
 *the watchman on your network*
 
@@ -21,6 +21,12 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.34.1
+
+- A "Prahari" icon on the desktop (shared by every user) opens the dashboard; created with background mode, and
+  by the background copy at start for installs set up earlier.
+- Fixed: reports to the Prahari portal did not name the Prahari version, so the portal could not show it or offer an update.
 
 ## What's new in 1.34.0 — keeps running when the window is closed
 
