@@ -15,7 +15,8 @@ IS_WINDOWS = os.name == "nt"
 
 
 def supported():
-    return IS_WINDOWS
+    """Background mode needs the Windows exe (the source version runs with Python and run.bat)."""
+    return IS_WINDOWS and bool(getattr(sys, "frozen", False))
 
 
 def is_admin():
@@ -87,6 +88,28 @@ def install(home, exe=None, extra_args=(), copy=True):
     if code != 0 or not installed():
         return False, "Could not register the background task: " + out.strip()[-300:], exe
     return True, "Prahari will run in the background - at every start of Windows, without anyone logged in.", exe
+
+
+def elevate_install(home, extra_args=()):
+    """Ask Windows for administrator rights (the usual 'Allow this app to make changes?' prompt) and run
+    Prahari.exe --install-service in that elevated copy. True when the prompt was accepted."""
+    if not IS_WINDOWS:
+        return False
+    try:
+        import ctypes
+        params = " ".join(["--install-service", "--home", f'"{home}"'] + list(extra_args))
+        rc = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 0)
+        return int(rc) > 32
+    except Exception:
+        return False
+
+
+def wait_port_free(port=8777, seconds=60):
+    import time
+    end = time.time() + seconds
+    while time.time() < end and port_busy(port):
+        time.sleep(1)
+    return not port_busy(port)
 
 
 def start():

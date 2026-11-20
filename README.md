@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.34.1
+# Prahari · प्रहरी — 1.34.2
 
 *the watchman on your network*
 
@@ -21,6 +21,12 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.34.2
+
+- Prahari.exe now always runs in the background on Windows - no question. Started without administrator rights,
+  it asks Windows for them (the usual "Allow this app to make changes?" - choose Yes). The console window then closes by itself.
+- Use --foreground to keep Prahari in a window only.
 
 ## What's new in 1.34.1
 

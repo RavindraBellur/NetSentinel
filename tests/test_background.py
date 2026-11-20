@@ -22,6 +22,18 @@ class HomeFolder(unittest.TestCase):
         self.assertTrue(os.listdir(os.path.join(home, ".netsentinel")))
 
 
+class NoQuestion(unittest.TestCase):
+    def test_background_is_automatic_and_only_for_the_windows_exe(self):
+        src = open(os.path.join(ROOT, "netsentinel.py"), encoding="utf-8").read()
+        self.assertNotIn("Run in the background? [Y/n]", src, "no question any more")
+        self.assertIn("elevate_install", src)
+        self.assertEqual(service.supported(), os.name == "nt" and bool(getattr(sys, "frozen", False)))
+
+    def test_foreground_option_exists(self):
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "netsentinel.py"), "--help"], capture_output=True, text=True, timeout=60)
+        self.assertIn("--foreground", r.stdout)
+
+
 class DesktopIcon(unittest.TestCase):
     def test_shortcut_opens_the_dashboard_and_is_written_once(self):
         d = tempfile.mkdtemp(prefix="desk-")

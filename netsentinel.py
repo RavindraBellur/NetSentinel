@@ -96,6 +96,7 @@ def main(argv=None):
     parser.add_argument("--no-browser", action="store_true", help="do not open the dashboard window")
     parser.add_argument("--home", metavar="DIR", help="use DIR\\.netsentinel for Prahari's data (set by the background task)")
     parser.add_argument("--background", action="store_true", help="run without a window (the Windows background task uses this)")
+    parser.add_argument("--foreground", action="store_true", help="Windows: run only in this window, do not set up background mode")
     parser.add_argument("--install-service", action="store_true", help="Windows: keep Prahari running in the background (as administrator)")
     parser.add_argument("--remove-service", action="store_true", help="Windows: stop running Prahari in the background (as administrator)")
     parser.add_argument("--browser", action="store_true", help="open in a normal browser tab instead of an app window")
@@ -208,6 +209,7 @@ def main(argv=None):
             ok, msg, _exe = service_mod.install(os.path.expanduser("~"), extra_args=["--lan"] if args.lan else [])
             if ok:
                 service_mod.ensure_shortcut(args.port)
+                service_mod.wait_port_free(args.port)      # the console copy hands over the dashboard port
                 service_mod.start()
         print("  " + msg)
         return 0 if ok else 1
@@ -743,17 +745,16 @@ def main(argv=None):
     if upd.restart_requested:
         print(f"  updated to {upd.latest} - starting the new version ...")
         return upd.handoff()
-    if getattr(sc, "to_background", False):
-        ok, msg = service_mod.start()
+    mode = getattr(sc, "to_background", "")
+    if mode:
+        ok, msg = (service_mod.start() if mode == "task" else (True, ""))   # "elevated": that copy starts it
         print()
         print("  " + "=" * 56)
         print("   Prahari now runs in the background." if ok else "   Could not start the background task: " + msg)
-        print("   Dashboard: http://127.0.0.1:8777/   - you can close this window.")
+        print("   Open it with the 'Prahari' icon on the desktop, or http://127.0.0.1:8777/")
+        print("   This window closes by itself.")
         print("  " + "=" * 56)
-        try:
-            input("\n  Press Enter to close ")
-        except Exception:
-            pass
+        time.sleep(12)
     return 0
 
 
@@ -768,34 +769,33 @@ def _ask_portal_in_console(sc, httpd=None, args=None):
         return
     need_portal = not sites.branch_target()[0] and not (settings.get("portal") or {}).get("asked")
     from netscan import service as service_mod
-    need_bg = service_mod.supported() and not service_mod.installed() and not (settings.get("background") or {}).get("declined")
+    need_bg = service_mod.supported() and not service_mod.installed() and not (args is not None and args.foreground)
     if not need_portal and not need_bg:
         return
 
     def ask_background():
+        # No question: on Windows Prahari always runs in the background (use --foreground to keep it in a window).
+        lan = ["--lan"] if (args is not None and args.lan) else []
+        home = os.path.expanduser("~")
         print()
-        print("  " + "=" * 56)
-        print("   KEEP PRAHARI RUNNING IN THE BACKGROUND?")
-        print("   Recommended for a server: it keeps watching when this window is closed,")
-        print("   after restarts, and with nobody logged in.")
-        print("  " + "=" * 56)
-        try:
-            yes = input("   Run in the background? [Y/n]: ").strip().lower() in ("", "y", "yes")
-        except (EOFError, KeyboardInterrupt):
-            return
-        if not yes:
-            settings.save({"background": {"declined": True}})
-            print("   OK - Prahari runs only while this window is open. (Later: Prahari.exe --install-service)\n")
-            return
-        ok, msg, _exe = service_mod.install(os.path.expanduser("~"), extra_args=["--lan"] if (args is not None and args.lan) else [])
+        print("  Setting Prahari up to run in the background (starts with Windows, keeps running")
+        print("  when this window is closed) ...")
+        if service_mod.is_admin():
+            ok, msg, _exe = service_mod.install(home, extra_args=lan)
+            if ok:
+                service_mod.ensure_shortcut(args.port if args is not None else 8777)
+                sc.to_background = "task"
+        else:
+            print("  Windows will ask 'Allow this app to make changes?' - choose Yes.")
+            ok = service_mod.elevate_install(home, lan)
+            msg = "" if ok else "Windows did not allow it (the prompt was refused)."
+            if ok:
+                sc.to_background = "elevated"
         if not ok:
-            print("   " + msg + "\n")
+            print("  NOT in the background: " + msg)
+            print("  Prahari runs only while this window is open. To fix it: close this window,")
+            print("  right-click Prahari.exe and choose 'Run as administrator'.\n")
             return
-        print("   " + msg)
-        if service_mod.ensure_shortcut(args.port if args is not None else 8777):
-            print("   A 'Prahari' icon on the desktop opens the dashboard.")
-        print("   Moving to the background ...")
-        sc.to_background = True
         if httpd is not None:
             threading.Thread(target=httpd.shutdown, daemon=True).start()
 
