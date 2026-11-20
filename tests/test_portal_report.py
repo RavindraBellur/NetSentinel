@@ -180,6 +180,39 @@ class OnePerNetwork(unittest.TestCase):
             settings.save({"branch": {"hub_url": "", "token": ""}})
 
 
+class TailscaleFromPortal(unittest.TestCase):
+    def test_report_says_whether_remote_access_is_ready(self):
+        from netscan import tailnet
+        tailnet._STATE.update(at=9e18, info={"installed": True, "running": True, "dns_name": "prahari-corp.ts.net", "ipv4": ["100.64.0.7"]})
+        try:
+            rep = sites.summary(type("S", (), {"snapshot": lambda self: {"health": {}, "devices": [], "open_incidents": [], "traffic": {}, "internet": [], "local": {"network": "192.168.0.0/24"}}})())
+            self.assertEqual(rep["tailnet"], {"installed": True, "running": True, "name": "prahari-corp.ts.net", "ip": "100.64.0.7", "subnet": "192.168.0.0/24"})
+        finally:
+            tailnet._STATE.update(at=0, info=None)
+
+    def test_key_from_the_portal_starts_setup_once_with_the_office_subnet(self):
+        from netscan import tailnet
+        calls = []
+        real_setup, real_detect = tailnet.setup_for_portal, tailnet.cached_detect
+        tailnet.setup_for_portal = lambda key, name, routes, log=print: calls.append((key, name, routes)) or (True, "ok")
+        tailnet.cached_detect = lambda max_age=300: {"running": False}
+        settings.save({"site_name": "SLIPL Corporate Office"})
+        sites._ts_try["at"] = 0
+        try:
+            sc = type("S", (), {"local": {"network": "192.168.0.0/24"}})()
+            sites.maybe_setup_tailscale({"tailscale": {"key": "tskey-auth-abc"}}, sc, log=lambda m: None)
+            sites.maybe_setup_tailscale({"tailscale": {"key": "tskey-auth-abc"}}, sc, log=lambda m: None)
+            import time as _t
+            _t.sleep(0.3)
+            self.assertEqual(calls, [("tskey-auth-abc", "prahari-slipl-corporate-office", "192.168.0.0/24")], "once per hour at most")
+            sites._ts_try["at"] = 0
+            sites.maybe_setup_tailscale({}, sc, log=lambda m: None)
+            _t.sleep(0.1)
+            self.assertEqual(len(calls), 1, "nothing without a key")
+        finally:
+            tailnet.setup_for_portal, tailnet.cached_detect = real_setup, real_detect
+
+
 class ConnectPortal(unittest.TestCase):
     def tearDown(self):
         settings.save({"branch": {"hub_url": "", "token": ""}, "portal": {"asked": False, "dismissed": False}})

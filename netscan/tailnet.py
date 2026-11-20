@@ -83,8 +83,9 @@ def install(log=print):
     return False, f"msiexec returned {code}: {out[-200:]}"
 
 
-def join(authkey, hostname="", log=print):
-    """Join the tailnet with an auth key - no browser, no clicking."""
+def join(authkey, hostname="", log=print, routes=""):
+    """Join the tailnet with an auth key - no browser, no clicking. routes: this office's subnet
+    (e.g. 192.168.0.0/24) to share, so its devices can be opened from anywhere on the tailnet."""
     exe = exe_path()
     if not exe:
         return False, "Tailscale is not installed"
@@ -94,6 +95,8 @@ def join(authkey, hostname="", log=print):
             "--accept-dns=true"]
     if hostname:
         args.append(f"--hostname={hostname}")
+    if routes:
+        args.append(f"--advertise-routes={routes}")
     log(f"  joining the tailnet as '{hostname or 'this-pc'}' ...")
     code, out = _run(args, timeout=120)
     if code != 0:
@@ -133,6 +136,30 @@ def detect():
         if ":" not in addr:
             info["ipv4"].append(addr)
     return info
+
+
+_STATE = {"at": 0.0, "info": None}
+
+
+def cached_detect(max_age=300):
+    """detect() at most every 5 minutes - it is called with every portal report."""
+    if _STATE["info"] is None or time.time() - _STATE["at"] > max_age:
+        _STATE["info"], _STATE["at"] = detect(), time.time()
+    return _STATE["info"]
+
+
+def setup_for_portal(authkey, hostname, routes, log=print):
+    """Install Tailscale if needed and join with the organisation's key, sharing this office's subnet.
+    Runs in the background copy of Prahari (SYSTEM), so the installer needs no prompt."""
+    if not IS_WINDOWS:
+        return False, "automatic Tailscale setup is for Windows"
+    if not exe_path():
+        ok, msg = install(log=log)
+        if not ok:
+            return False, msg
+    ok, msg = join(authkey, hostname=hostname, log=log, routes=routes)
+    _STATE["info"] = None
+    return ok, msg
 
 
 def best_url(port=8777, prefer="dns"):

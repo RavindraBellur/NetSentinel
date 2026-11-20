@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.35.0
+# Prahari · प्रहरी — 1.36.0
 
 *Your network's 24x7 guard*
 
@@ -21,6 +21,12 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.36.0
+
+- Remote access from anywhere: once your organisation's Tailscale key is saved on the Prahari portal, Prahari installs
+  Tailscale at each location by itself, joins, and shares that office's network - so the portal's Open / RDP / SSH
+  buttons reach every device from your laptop or phone.
 
 ## What's new in 1.35.0
 

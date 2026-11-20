@@ -118,6 +118,7 @@ def summary(scanner):
                        "category": ((i.get("diagnosis") or {}).get("category") or "")}
                       for i in incidents],
         "install_id": install_id(),
+        "tailnet": _tailnet_state(snap),
         "network_id": network_id(snap),
         "devices": len(snap.get("devices") or []),
         # every device, compact, so the Prahari portal can show this site's full device list
@@ -137,6 +138,39 @@ def _fresh_lines(scanner):
     if time.time() - (getattr(scanner, "wan_lines_at", 0) or 0) > 900:
         return []
     return [{"ip": x["ip"], "interface": x["interface"], "up": bool(x["up"])} for x in (getattr(scanner, "wan_lines", None) or [])][:6]
+
+
+def _tailnet_state(snap):
+    """Remote access via Tailscale: installed / connected / which subnet this office shares."""
+    try:
+        from . import tailnet
+        info = tailnet.cached_detect()
+    except Exception:
+        info = {}
+    return {"installed": bool(info.get("installed")), "running": bool(info.get("running")),
+            "name": info.get("dns_name") or "", "ip": (info.get("ipv4") or [""])[0],
+            "subnet": (snap.get("local") or {}).get("network") or ""}
+
+
+_ts_try = {"at": 0.0}
+
+
+def maybe_setup_tailscale(reply, scanner, log=print):
+    """The portal hands over the organisation's Tailscale key while this site is not connected yet."""
+    key = ((reply or {}).get("tailscale") or {}).get("key") or ""
+    if not key or time.time() - _ts_try["at"] < 3600:
+        return
+    _ts_try["at"] = time.time()
+    from . import tailnet
+    if tailnet.cached_detect(0).get("running"):
+        return
+    snap_local = getattr(scanner, "local", {}) or {}
+    name = re.sub(r"[^a-z0-9-]+", "-", ("prahari-" + (settings.get("site_name") or "site")).lower()).strip("-")[:60]
+
+    def work():
+        ok, msg = tailnet.setup_for_portal(key, name, snap_local.get("network") or "", log=log)
+        log(("Tailscale: " if ok else "Tailscale setup failed: ") + msg)
+    threading.Thread(target=work, daemon=True, name="tailscale-setup").start()
 
 
 def install_id():
@@ -263,7 +297,9 @@ class BranchReporter(threading.Thread):
             try:
                 import json as _json
                 from . import upgrade as upgrade_mod
-                upgrade_mod.pending_update(_json.loads(body or "{}"), url, log=self.log, token=token)
+                reply = _json.loads(body or "{}")
+                maybe_setup_tailscale(reply, self.scanner, log=self.log)
+                upgrade_mod.pending_update(reply, url, log=self.log, token=token)
             except Exception as exc:
                 self.last_error = f"update check failed: {exc}"[:140]
         else:
