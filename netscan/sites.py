@@ -149,7 +149,8 @@ def _tailnet_state(snap):
         info = {}
     return {"installed": bool(info.get("installed")), "running": bool(info.get("running")),
             "name": info.get("dns_name") or "", "ip": (info.get("ipv4") or [""])[0],
-            "subnet": (snap.get("local") or {}).get("network") or ""}
+            "subnet": (snap.get("local") or {}).get("network") or "",
+            "setup": dict(getattr(__import__("netscan.tailnet", fromlist=["SETUP"]), "SETUP", {}) or {})}
 
 
 _ts_try = {"at": 0.0}
@@ -158,7 +159,7 @@ _ts_try = {"at": 0.0}
 def maybe_setup_tailscale(reply, scanner, log=print):
     """The portal hands over the organisation's Tailscale key while this site is not connected yet."""
     key = ((reply or {}).get("tailscale") or {}).get("key") or ""
-    if not key or time.time() - _ts_try["at"] < 3600:
+    if not key or time.time() - _ts_try["at"] < 600:
         return
     _ts_try["at"] = time.time()
     from . import tailnet

@@ -186,6 +186,7 @@ class TailscaleFromPortal(unittest.TestCase):
         tailnet._STATE.update(at=9e18, info={"installed": True, "running": True, "dns_name": "prahari-corp.ts.net", "ipv4": ["100.64.0.7"]})
         try:
             rep = sites.summary(type("S", (), {"snapshot": lambda self: {"health": {}, "devices": [], "open_incidents": [], "traffic": {}, "internet": [], "local": {"network": "192.168.0.0/24"}}})())
+            rep["tailnet"].pop("setup", None)
             self.assertEqual(rep["tailnet"], {"installed": True, "running": True, "name": "prahari-corp.ts.net", "ip": "100.64.0.7", "subnet": "192.168.0.0/24"})
         finally:
             tailnet._STATE.update(at=0, info=None)
@@ -204,7 +205,7 @@ class TailscaleFromPortal(unittest.TestCase):
             sites.maybe_setup_tailscale({"tailscale": {"key": "tskey-auth-abc"}}, sc, log=lambda m: None)
             import time as _t
             _t.sleep(0.3)
-            self.assertEqual(calls, [("tskey-auth-abc", "prahari-slipl-corporate-office", "192.168.0.0/24")], "once per hour at most")
+            self.assertEqual(calls, [("tskey-auth-abc", "prahari-slipl-corporate-office", "192.168.0.0/24")], "at most once every 10 minutes")
             sites._ts_try["at"] = 0
             sites.maybe_setup_tailscale({}, sc, log=lambda m: None)
             _t.sleep(0.1)

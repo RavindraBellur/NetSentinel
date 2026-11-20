@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.36.0
+# Prahari · प्रहरी — 1.36.1
 
 *Your network's 24x7 guard*
 
@@ -21,6 +21,11 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.36.1
+
+- Remote access setup reports its progress and any error to the Prahari portal, waits for the Tailscale service after
+  installing, retries joining, and tries again every 10 minutes.
 
 ## What's new in 1.36.0
 

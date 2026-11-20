@@ -139,6 +139,24 @@ def detect():
 
 
 _STATE = {"at": 0.0, "info": None}
+# Progress of the automatic setup, reported to the portal: stage, error, when.
+SETUP = {"stage": "", "error": "", "at": 0}
+
+
+def _setup(stage, error=""):
+    SETUP.update(stage=stage, error=error[-300:], at=int(time.time()))
+
+
+def _wait_service(seconds=90):
+    """Right after a fresh install the Tailscale service needs a moment before 'tailscale up' works."""
+    exe = exe_path()
+    end = time.time() + seconds
+    while exe and time.time() < end:
+        code, out = _run([exe, "status", "--json"], timeout=10)
+        if code == 0 or "BackendState" in out or "NeedsLogin" in out or "Logged out" in out:
+            return True
+        time.sleep(3)
+    return False
 
 
 def cached_detect(max_age=300):
@@ -153,12 +171,32 @@ def setup_for_portal(authkey, hostname, routes, log=print):
     Runs in the background copy of Prahari (SYSTEM), so the installer needs no prompt."""
     if not IS_WINDOWS:
         return False, "automatic Tailscale setup is for Windows"
+    try:
+        from . import service
+        admin = service.is_admin()
+    except Exception:
+        admin = True
     if not exe_path():
+        if not admin:
+            msg = "Prahari is not running with administrator rights, so it cannot install Tailscale"
+            _setup("failed", msg)
+            return False, msg
+        _setup("installing")
         ok, msg = install(log=log)
         if not ok:
+            _setup("failed", msg)
             return False, msg
-    ok, msg = join(authkey, hostname=hostname, log=log, routes=routes)
+    _setup("joining")
+    _wait_service()
+    ok, msg = False, ""
+    for attempt in range(3):
+        ok, msg = join(authkey, hostname=hostname, log=log, routes=routes)
+        if ok:
+            break
+        time.sleep(10)
+        _wait_service(30)
     _STATE["info"] = None
+    _setup("done" if ok else "failed", "" if ok else msg)
     return ok, msg
 
 
