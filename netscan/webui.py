@@ -1791,7 +1791,9 @@ window.addEventListener('hashchange',applyHash);
 ['input','change'].forEach(function(ev){ document.addEventListener(ev,function(e){
   var v=document.getElementById('view'); if(v&&e.target&&v.contains(e.target)) S.dirty=true; }); });
 document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeDrawer(); });
-poll().then(applyHash); setInterval(function(){ poll(true); },3000);
+// Refresh every 5 s while the dashboard is on screen; nothing while the tab is hidden or minimised.
+poll().then(applyHash); setInterval(function(){ if(!document.hidden) poll(true); },5000);
+document.addEventListener('visibilitychange',function(){ if(!document.hidden) poll(true); });
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }
 """
 
@@ -1948,7 +1950,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.33.0"))
+            .replace("__VERSION__", "1.33.1"))
 
 
 def app_page(version):
@@ -2018,8 +2020,17 @@ class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json; charset=utf-8", extra=None):
         if isinstance(body, str):
             body = body.encode("utf-8")
+        # The dashboard fetches its whole state every few seconds: compress text answers (about 10x smaller).
+        gz = (len(body) > 1400 and "gzip" in (self.headers.get("Accept-Encoding") or "")
+              and ctype.split(";")[0] in ("application/json", "text/html", "text/css", "application/javascript", "text/csv"))
+        if gz:
+            import gzip
+            body = gzip.compress(body, compresslevel=5)
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        if gz:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Frame-Options", "DENY")
@@ -2943,7 +2954,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.33.0", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.33.1", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

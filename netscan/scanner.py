@@ -444,7 +444,7 @@ class Scanner:
                     dev["remote"] = remote.actions_for(dev)
                 except Exception:
                     dev["remote"] = []
-                dev["history"] = (dev.get("history") or [])[-60:]
+                dev["history"] = (dev.get("history") or [])[-30:]   # enough for the sparkline; full history via /api/history
         cfg = settings.load()
         poller = self.poller.snapshot() if self.poller else {}
         health = self.poller.health() if self.poller else _basic_health(devices)

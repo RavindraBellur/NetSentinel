@@ -24,6 +24,8 @@ import urllib.request
 from . import alerts, diagnose, settings, store
 
 REPORT_PATH = "/api/branch/report"
+LIST_EVERY = 300          # seconds: send the full device list at least this often (and whenever it changes)
+
 # A Prahari portal key needs no hub address: the portal is the hub. pok_ = the organisation key (one for every
 # site; the portal tells sites apart by their site name), psk_ = a token made for one site.
 PORTAL_URL = "https://prahari.essensai.workers.dev"
@@ -180,6 +182,8 @@ class BranchReporter(threading.Thread):
         self.last_ok = 0.0
         self.last_error = ""
         self.sent = 0
+        self._list_sig = None      # device list last sent: its fingerprint and when
+        self._list_at = 0.0
 
     def stop(self):
         self._stop.set()
@@ -195,7 +199,15 @@ class BranchReporter(threading.Thread):
         if not url or not token:
             self.last_error = "branch mode needs a hub URL and a token"
             return False
-        payload = json.dumps(summary(self.scanner)).encode("utf-8")
+        rep = summary(self.scanner)
+        # The full device list is large: send it when a device appears, disappears or changes state,
+        # and at least every 5 minutes. Other reports carry only the totals (the portal keeps the last list).
+        devs = rep.get("device_list") or []
+        sig = hashlib.sha256(json.dumps([(d["ip"], d["state"], d["name"]) for d in devs]).encode()).hexdigest()
+        full = sig != self._list_sig or time.time() - self._list_at >= LIST_EVERY
+        if not full:
+            rep.pop("device_list", None)
+        payload = json.dumps(rep).encode("utf-8")
         req = urllib.request.Request(
             url + REPORT_PATH, data=payload, method="POST",
             headers={"Content-Type": "application/json", "X-NS": "1",
@@ -230,6 +242,8 @@ class BranchReporter(threading.Thread):
         except Exception as exc:
             self.last_error = f"{exc.__class__.__name__}: {exc}"[:160]
             return False
+        if ok and full:
+            self._list_sig, self._list_at = sig, time.time()
         if ok:
             if getattr(self.scanner, "standby", ""):
                 print("\n  This Prahari is now the one watching this network - monitoring resumed.\n")

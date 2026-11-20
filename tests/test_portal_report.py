@@ -91,6 +91,47 @@ class FullReport(unittest.TestCase):
         self.assertLess(len(json.dumps(rep)), 256 * 1024, "a 250-device report stays well under the portal's limit")
 
 
+class DeviceListOnlyWhenNeeded(unittest.TestCase):
+    def test_list_sent_on_change_and_every_5_minutes_only(self):
+        bodies = []
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                bodies.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"ok": true}')
+
+        devs = [{"ip": "10.0.0.%d" % i, "state": "up", "hostname": "d%d" % i} for i in range(1, 40)]
+
+        class S(FakeScanner):
+            standby = ""
+
+            def snapshot(self):
+                return {"health": {}, "devices": devs, "open_incidents": [], "traffic": {}, "internet": []}
+        srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            settings.save({"branch": {"hub_url": f"http://127.0.0.1:{srv.server_port}", "token": "psk_x"}})
+            rep = sites.BranchReporter(S())
+            rep.push(); rep.push()
+            self.assertIn("device_list", bodies[0], "first report carries the list")
+            self.assertNotIn("device_list", bodies[1], "an unchanged list is not sent again")
+            self.assertEqual(bodies[1]["devices"], 39, "totals are always sent")
+            devs[3]["state"] = "down"
+            rep.push()
+            self.assertIn("device_list", bodies[2], "a device changing state sends the list")
+            rep._list_at -= sites.LIST_EVERY + 1
+            rep.push()
+            self.assertIn("device_list", bodies[3], "and at least every 5 minutes")
+        finally:
+            srv.shutdown()
+            settings.save({"branch": {"hub_url": "", "token": ""}})
+
+
 class OnePerNetwork(unittest.TestCase):
     def test_network_fingerprint(self):
         gw = {"ip": "192.168.0.1", "mac": "AA:BB:CC:00:11:22", "is_gateway": True}

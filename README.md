@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.33.0
+# Prahari · प्रहरी — 1.33.1
 
 *the watchman on your network*
 
@@ -21,6 +21,15 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.33.1 — a lighter dashboard
+
+- The dashboard refreshes every 5 s instead of 3 s, and not at all while its tab is hidden or minimised.
+- Its answers are compressed: about 14 KB per refresh instead of ~600 KB for 150 devices (~0.2 MB a minute
+  instead of ~13 MB).
+- The device sparkline uses the last 30 polls (the device drawer still loads the full history).
+- Reports to the Prahari portal carry the full device list only when a device appears, disappears or changes
+  state, and at least every 5 minutes; other reports are about 0.5 KB.
 
 ## What's new in 1.33.0 — the whole dashboard on the Prahari portal
 
