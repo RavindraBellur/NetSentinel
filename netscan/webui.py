@@ -270,7 +270,18 @@ function viewOverview(){
   var incs=(d.open_incidents||[]).slice(0,6);
   var tl=t.top||[]; var max=tl.length?Math.max.apply(null,tl.map(function(x){return x.down_bps+x.up_bps;})):1;
   var ints=(d.internet||[]);
-  return '<div class="kpis">'+
+  var st=d.settings||{}, pc=(st.portal||{});
+  var portalBox=(can('settings')&&!(st.branch||{}).token_set&&!pc.dismissed)?
+    '<div class="card" style="margin-bottom:14px;border-color:#2f6b4b"><h2>Connect to the Prahari portal</h2>'+
+    '<div class="small muted" style="margin-bottom:8px">Watch this site from anywhere at prahari.essensai.workers.dev. '+
+    'Paste your <b>organisation key</b> (shown on the portal next to Download) and give this site a name.</div>'+
+    '<div class="grid2">'+fld('Name of this site (e.g. Corporate Office)','pcname',st.site_name||'')+fld('Organisation key (pok_...)','pctok','')+'</div>'+
+    '<button class="primary" onclick="portalConnect()">Connect</button> '+
+    '<button class="ghost" onclick="portalLater()">Not now</button>'+
+    '<div id="pcmsg" class="small" style="margin-top:8px"></div></div>':
+    (S.portalOk?'<div class="card" style="margin-bottom:14px;border-color:#2f6b4b"><h2>Connected to the Prahari portal</h2>'+
+      '<div class="small">'+esc(S.portalOk)+'</div></div>':'');
+  return portalBox+'<div class="kpis">'+
     kpi('Devices monitored',h.monitored||0,(h.up||0)+' up · '+(h.degraded||0)+' degraded · '+(h.down||0)+' down')+
     kpi('Open incidents',h.open_incidents||0,(h.critical||0)+' critical')+
     kpi('Internet down',bps(t.total_down_bps||0),'up '+bps(t.total_up_bps||0)+' · '+(t.source||'no flow'))+
@@ -1130,8 +1141,8 @@ function viewSettings(){
      '<div id="tokmsg" class="small" style="margin-top:6px"></div>'+
    '</div>'+
    '<div class="card" style="margin-top:14px"><h2>This site reports to a hub</h2>'+
-     '<div class="small muted" style="margin-bottom:6px">To watch this site on the Prahari portal: paste the portal token '+
-     '(psk_...) below and Save settings - no Hub URL needed.</div>'+
+     '<div class="small muted" style="margin-bottom:6px">To watch this site on the Prahari portal: paste the organisation key '+
+     '(pok_...) below and Save settings - no Hub URL needed. The site appears on the portal under its Site name.</div>'+
      fld('Hub URL (blank = Prahari portal; or e.g. http://10.0.0.5:8777)','brurl',(s.branch||{}).hub_url)+
      '<div class="field"><label>Branch token</label><input type="text" id="brtok" value="" placeholder="'+
        ((s.branch||{}).token_set?'******** saved':'paste the token head office gave you')+'"></div>'+
@@ -1483,6 +1494,12 @@ function testHeartbeat(){
     el.textContent = r.ok ? ('sent - ' + (r.message||'ok')) : ('failed - ' + (r.message||'?'));
   });
 }
+function portalConnect(){
+  var m=document.getElementById('pcmsg'); m.textContent='connecting ...';
+  api('/api/portal/connect',{method:'POST',body:JSON.stringify({token:strVal('pctok'),site_name:strVal('pcname')})})
+    .then(function(r){ if(r.ok){ S.portalOk=r.message||'connected'; poll(); } else m.textContent=r.message||'failed'; });
+}
+function portalLater(){ api('/api/portal/later',{method:'POST',body:'{}'}).then(function(){ poll(); }); }
 function saveSettings(){
   var patch={ site_name:strVal('site'), poll_interval_seconds:num('poll',60),
     thresholds:{latency_warn_ms:num('lw',150),latency_crit_ms:num('lc',300),loss_warn_pct:num('sw1',3),
@@ -1916,7 +1933,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.32.2"))
+            .replace("__VERSION__", "1.32.3"))
 
 
 def app_page(version):
@@ -2736,6 +2753,17 @@ class Handler(BaseHTTPRequestHandler):
             store.delete_branch(name)
             self.scanner.audit(who, "branch removed", name)
             return self._json({"ok": True})
+        if path == "/api/portal/connect":
+            if not self._need("settings", user):
+                return
+            ok, msg = self.scanner.connect_portal(payload.get("token", ""), payload.get("site_name", ""))
+            self.scanner.audit(who, "portal connect", "ok" if ok else "failed")
+            return self._json({"ok": ok, "message": msg})
+        if path == "/api/portal/later":
+            if not self._need("settings", user):
+                return
+            settings.save({"portal": {"asked": True, "dismissed": True}})
+            return self._json({"ok": True})
         if path == "/api/branch/test":
             if not self._need("settings", user):
                 return
@@ -2894,7 +2922,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.32.2", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.32.3", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

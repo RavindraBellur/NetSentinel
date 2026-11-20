@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.32.2
+# Prahari · प्रहरी — 1.32.3
 
 *the watchman on your network*
 
@@ -21,6 +21,16 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.32.3 — connect to the portal when Prahari first starts
+
+- First start in a console window: Prahari asks for the organisation key from the Prahari portal (Enter skips)
+  and the name of the site,
+  and connects straight away - while the dashboard is already running.
+- Until the site is connected, the dashboard's Overview shows a "Connect to the Prahari portal" box
+  (site name + token + Connect, or Not now).
+- Sites connected to the portal can be updated from the portal (Update / Update all); each site still installs
+  only a signed release, verified on the site.
 
 ## What's new in 1.32.2 — Settings keeps what you type
 

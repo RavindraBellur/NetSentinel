@@ -85,6 +85,17 @@ class Scanner:
         self._scan_thread.start()
         return True
 
+    def connect_portal(self, token, site_name=""):
+        """Save the portal token, start reporting and send the first report now. Returns (ok, message)."""
+        ok, msg = sites.connect_portal(token, site_name)
+        if not ok:
+            return ok, msg
+        self.ensure_branch_reporter()
+        rep = self.branch_reporter or sites.BranchReporter(self, log=self.log)
+        if rep.push():
+            return True, "Connected - this site now shows on the Prahari portal and updates every 30 seconds."
+        return False, "Token saved, but the portal did not accept the first report: " + (rep.last_error or "unknown error")
+
     def ensure_branch_reporter(self):
         """Start reporting to the hub/portal as soon as it is configured (also right after Save)."""
         if self.branch_reporter is not None and self.branch_reporter.is_alive():

@@ -678,6 +678,7 @@ def main(argv=None):
         print("  updates     : off")
     else:
         print(f"  updates     : checked every 6 hours, {'installed automatically' if upd.auto_install else 'installed when you choose'}")
+    _ask_portal_in_console(sc)
     print("  leave this window open. Press Ctrl+C to stop.\n")
     try:
         httpd.serve_forever()
@@ -693,6 +694,44 @@ def main(argv=None):
         print(f"  updated to {upd.latest} - starting the new version ...")
         return upd.handoff()
     return 0
+
+
+def _ask_portal_in_console(sc):
+    """First start in a console: ask for the Prahari portal token, while the dashboard already runs."""
+    try:
+        interactive = sys.stdin is not None and sys.stdin.isatty()
+    except Exception:
+        interactive = False
+    if not interactive or sites.branch_target()[0] or (settings.get("portal") or {}).get("asked"):
+        return
+
+    def ask():
+        time.sleep(1.0)
+        print()
+        print("  " + "=" * 56)
+        print("   CONNECT THIS SITE TO THE PRAHARI PORTAL")
+        print("   Paste your organisation key from prahari.essensai.workers.dev")
+        print("   (shown next to the Download button) to watch this site from anywhere.")
+        print("  " + "=" * 56)
+        try:
+            token = input("   Organisation key (pok_...), or Enter to skip: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return
+        if not token:
+            settings.save({"portal": {"asked": True}})
+            print("   skipped - you can connect later on the dashboard's Overview page.\n")
+            return
+        default = settings.get("site_name") or socket.gethostname()
+        try:
+            name = input(f"   Name of this site, e.g. Corporate Office [{default}]: ").strip() or default
+        except (EOFError, KeyboardInterrupt):
+            name = default
+        ok, msg = sc.connect_portal(token, name)
+        print(("   " if ok else "   NOT CONNECTED: ") + msg + "\n")
+        if not ok:
+            print("   You can try again on the dashboard's Overview page.\n")
+
+    threading.Thread(target=ask, daemon=True, name="portal-prompt").start()
 
 
 if __name__ == "__main__":

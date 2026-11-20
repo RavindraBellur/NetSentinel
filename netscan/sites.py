@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import secrets
 import threading
 import time
@@ -23,8 +24,24 @@ import urllib.request
 from . import alerts, diagnose, settings, store
 
 REPORT_PATH = "/api/branch/report"
-# A token made on the Prahari portal (psk_...) needs no hub address: the portal is the hub.
+# A Prahari portal key needs no hub address: the portal is the hub. pok_ = the organisation key (one for every
+# site; the portal tells sites apart by their site name), psk_ = a token made for one site.
 PORTAL_URL = "https://prahari.essensai.workers.dev"
+
+
+def connect_portal(token, site_name=""):
+    """Save a Prahari portal token (and optionally this site's name). Returns (ok, message)."""
+    token = (token or "").strip().strip('"').strip("'")
+    if not re.fullmatch(r"(psk|pok)_[A-Za-z0-9_-]{16,80}", token):
+        return False, "That is not a Prahari portal key - it starts with pok_ (copy it from the portal, next to Download)."
+    name = (site_name or "").strip()[:64]
+    if token.startswith("pok_") and not (name or settings.get("site_name")):
+        return False, "Give this site a name (e.g. Corporate Office) - the portal lists it under that name."
+    patch = {"branch": {"token": token, "hub_url": ""}, "portal": {"asked": True}}
+    if name:
+        patch["site_name"] = name
+    settings.save(patch)
+    return True, "saved"
 
 
 def branch_target():
@@ -32,7 +49,7 @@ def branch_target():
     branch = settings.get("branch") or {}
     token = (branch.get("token") or "").strip()
     url = (branch.get("hub_url") or "").strip().rstrip("/")
-    if not url and token.startswith("psk_"):
+    if not url and token.startswith(("psk_", "pok_")):
         url = PORTAL_URL
     return (url, token) if url and token else ("", "")
 

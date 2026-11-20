@@ -24,6 +24,16 @@ class PortalTarget(unittest.TestCase):
         settings.save({"branch": {"hub_url": "", "token": "psk_abc"}})
         self.assertEqual(sites.branch_target(), (sites.PORTAL_URL, "psk_abc"))
 
+    def test_organisation_key_needs_no_hub_url_but_a_site_name(self):
+        settings.save({"site_name": ""})
+        ok, msg = sites.connect_portal("pok_" + "k" * 30)
+        self.assertFalse(ok)
+        self.assertIn("name", msg)
+        ok, _ = sites.connect_portal("pok_" + "k" * 30, "Corporate Office")
+        self.assertTrue(ok)
+        self.assertEqual(sites.branch_target(), (sites.PORTAL_URL, "pok_" + "k" * 30))
+        self.assertEqual(sites.summary.__name__, "summary")
+
     def test_other_token_still_needs_a_hub_url(self):
         settings.save({"branch": {"hub_url": "", "token": "nsb_abc"}})
         self.assertEqual(sites.branch_target(), ("", ""))
@@ -56,6 +66,24 @@ class PortalTarget(unittest.TestCase):
             self.assertEqual(got["body"]["health"]["score"], 90)
         finally:
             srv.shutdown()
+
+
+class ConnectPortal(unittest.TestCase):
+    def tearDown(self):
+        settings.save({"branch": {"hub_url": "", "token": ""}, "portal": {"asked": False, "dismissed": False}})
+
+    def test_rejects_things_that_are_not_portal_tokens(self):
+        for bad in ("", "hello", "nsb_" + "a" * 30, "psk_short", "psk_" + "a" * 30 + " ; rm"):
+            ok, msg = sites.connect_portal(bad)
+            self.assertFalse(ok, bad)
+        self.assertEqual(sites.branch_target(), ("", ""))
+
+    def test_saves_token_name_and_points_at_the_portal(self):
+        ok, _ = sites.connect_portal('  "psk_' + "A1b2-_" * 5 + '"  ', "SLIPL Corporate Office")
+        self.assertTrue(ok)
+        self.assertEqual(settings.get("site_name"), "SLIPL Corporate Office")
+        self.assertEqual(sites.branch_target(), (sites.PORTAL_URL, "psk_" + "A1b2-_" * 5))
+        self.assertTrue(settings.get("portal")["asked"])
 
 
 if __name__ == "__main__":
