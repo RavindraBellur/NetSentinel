@@ -1083,6 +1083,7 @@ function viewSettings(){
    '<div class="card"><h2>Monitoring</h2>'+
      fld('Site name','site',s.site_name)+
      fld('Poll interval (seconds)','poll',s.poll_interval_seconds,'number')+
+     fld('SNMP community of your firewall / switches (read-only; comma separated)','snmpc',((s.discovery||{}).snmp_communities||[]).join(', '))+
      '<div class="grid2">'+
        fld('Latency warn (ms)','lw',th.latency_warn_ms,'number')+
        fld('Latency critical (ms)','lc',th.latency_crit_ms,'number')+
@@ -1520,7 +1521,7 @@ function saveSettings(){
     thresholds:{latency_warn_ms:num('lw',150),latency_crit_ms:num('lc',300),loss_warn_pct:num('sw1',3),
       loss_crit_pct:num('sc1',10),open_after_bad_polls:num('ob',2),resolve_after_good_polls:num('rg',3)},
     monitor:{printers:chkVal('mp'),phones:chkVal('mphone'),unknown:chkVal('munk'),servers:chkVal('msrv')},
-    discovery:{interval_minutes:num('disc',10)},
+    discovery:{interval_minutes:num('disc',10),snmp_communities:strVal('snmpc').split(',').map(function(x){return x.trim();}).filter(Boolean)},
     netflow:{enabled:chkVal('nfen'),port:num('nfp',2055),sflow_port:num('sfp',6343),
       allowed_exporters:strVal('nfx').split(',').map(function(x){return x.trim();}).filter(Boolean)},
     syslog:{enabled:chkVal('slen'),port:num('slp',5514)},
@@ -1950,7 +1951,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.34.3"))
+            .replace("__VERSION__", "1.35.0"))
 
 
 def app_page(version):
@@ -2954,7 +2955,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.34.3", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.35.0", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

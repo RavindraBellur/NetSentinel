@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.34.3
+# Prahari · प्रहरी — 1.35.0
 
 *Your network's 24x7 guard*
 
@@ -21,6 +21,13 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.35.0
+
+- Both internet lines of a dual-WAN firewall are shown on the portal, each with its up/down state, read from the
+  firewall over SNMP - including the idle backup line. You are emailed when a line goes down or comes back.
+- Settings has a field for the SNMP community of your firewall and switches.
+- Fixed: reading router and switch interfaces over SNMP never worked (a missing name), so per-port traffic was missing.
 
 ## What's new in 1.34.3
 

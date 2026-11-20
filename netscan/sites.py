@@ -103,7 +103,8 @@ def summary(scanner):
         "internet": [{"name": t.get("name"), "state": t.get("state"),
                       "latency": t.get("latency"), "loss": t.get("loss")}
                      for t in (snap.get("internet") or [])],
-        "wan": {"ips": wan.get("ips") or ([public["ip"]] if public.get("ip") else []),
+        "wan": {"lines": _fresh_lines(scanner),
+                "ips": wan.get("ips") or ([public["ip"]] if public.get("ip") else []),
                 "isp": wan.get("isp") or public.get("isp", ""),
                 "dual": bool(wan.get("dual"))},
         "traffic": {"down_bps": traffic.get("total_down_bps", 0),
@@ -129,6 +130,13 @@ def summary(scanner):
     except Exception:
         payload["sla"] = {}
     return payload
+
+
+def _fresh_lines(scanner):
+    """Internet lines read from the firewall over SNMP in the last 15 minutes (see monitor.SnmpPoller)."""
+    if time.time() - (getattr(scanner, "wan_lines_at", 0) or 0) > 900:
+        return []
+    return [{"ip": x["ip"], "interface": x["interface"], "up": bool(x["up"])} for x in (getattr(scanner, "wan_lines", None) or [])][:6]
 
 
 def install_id():

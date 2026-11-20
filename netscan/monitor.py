@@ -68,7 +68,8 @@ class SnmpPoller(threading.Thread):
         with self.scanner.lock:
             for dev in self.scanner.devices.values():
                 if dev.get("snmp_community") or dev.get("is_gateway"):
-                    targets.append((dev["ip"], dev.get("snmp_community") or "public"))
+                    from . import discovery
+                    targets.append((dev["ip"], dev.get("snmp_community") or discovery.snmp_communities()[0]))
         return targets[:8]
 
     # -- MAC -> switch port --------------------------------------------------
@@ -117,6 +118,36 @@ class SnmpPoller(threading.Thread):
         self._fdb_cache[host] = (now, mapping)
         return mapping
 
+    # -- internet lines ------------------------------------------------------
+    def _wan_lines(self, host, community, descrs):
+        """The firewall's internet lines: interfaces holding a public IPv4 (or named like a WAN port),
+        each with its up/down state. Lets a site show both lines of a dual-WAN firewall, even the idle one."""
+        import ipaddress
+        addr_if = {}
+        for oid, _tag, value in snmp.walk_bulk(host, snmp.OID_IP_AD_IFINDEX, community, max_rows=200):
+            if isinstance(value, int):
+                addr_if[oid[len(snmp.OID_IP_AD_IFINDEX) + 1:]] = str(value)
+        if not addr_if:
+            return
+        oper = {oid.rsplit(".", 1)[-1]: value
+                for oid, _tag, value in snmp.walk_bulk(host, snmp.OID_IF_OPER, community, max_rows=400)
+                if isinstance(value, int)}
+        lines = []
+        for ip, ifindex in addr_if.items():
+            try:
+                addr = ipaddress.ip_address(ip)
+            except ValueError:
+                continue
+            name = descrs.get(ifindex, "if" + ifindex)
+            public = addr.is_global or addr in ipaddress.ip_network("100.64.0.0/10")   # incl. carrier-grade NAT
+            if addr.is_loopback or addr.is_link_local or not (public or (WAN_RE.search(name) and not SKIP_RE.search(name))):
+                continue
+            lines.append({"ip": ip, "interface": name, "up": oper.get(ifindex) == 1, "host": host})
+        with self.scanner.lock:
+            others = [x for x in (getattr(self.scanner, "wan_lines", None) or []) if x.get("host") != host]
+            self.scanner.wan_lines = sorted(others + lines, key=lambda x: x["interface"])
+            self.scanner.wan_lines_at = time.time()
+
     # -- one poll ------------------------------------------------------------
     def poll_once(self):
         for host, community in self._targets():
@@ -137,6 +168,7 @@ class SnmpPoller(threading.Thread):
                 break
         if not descrs:
             return
+        self._wan_lines(host, community, descrs)
 
         counters = {}
         for base, key in ((snmp.OID_IF_HC_IN, "in"), (snmp.OID_IF_HC_OUT, "out")):
