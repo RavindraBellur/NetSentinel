@@ -61,7 +61,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", required=True)
     ap.add_argument("--devanagari", default="प्रहरी")
-    ap.add_argument("--tagline", default="the watchman on your network")
+    ap.add_argument("--tagline", default="Your network's 24x7 guard")
     ap.add_argument("--root", default=os.path.dirname(os.path.abspath(__file__)))
     args = ap.parse_args()
 

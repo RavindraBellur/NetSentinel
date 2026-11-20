@@ -1,6 +1,6 @@
 # Prahari · प्रहरी — 1.34.3
 
-*the watchman on your network*
+*Your network's 24x7 guard*
 
 
 A network operations console for a small or mid-size office that runs on one PC, on
