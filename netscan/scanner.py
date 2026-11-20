@@ -54,6 +54,9 @@ class Scanner:
         self.syslog = None
         self.wan_watcher = None
         self.branch_reporter = None
+        # Set when the Prahari portal says another Prahari already watches this network: no polling,
+        # no sensor checks, no alerts - only reporting, so this copy can take over if the other stops.
+        self.standby = ""
         self.lost_contact = None
         self.agent = None
         self.heartbeat = None
@@ -343,6 +346,8 @@ class Scanner:
                 store.prune_sensor_samples(30)
             except Exception:
                 pass
+        if self.standby:
+            return []
         try:
             changed = self.sensors.run_once()
         except Exception as exc:

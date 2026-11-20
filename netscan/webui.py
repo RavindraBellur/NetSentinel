@@ -279,9 +279,12 @@ function viewOverview(){
     '<button class="primary" onclick="portalConnect()">Connect</button> '+
     '<button class="ghost" onclick="portalLater()">Not now</button>'+
     '<div id="pcmsg" class="small" style="margin-top:8px"></div></div>':
-    (S.portalOk?'<div class="card" style="margin-bottom:14px;border-color:#2f6b4b"><h2>Connected to the Prahari portal</h2>'+
-      '<div class="small">'+esc(S.portalOk)+'</div></div>':'');
-  return portalBox+'<div class="kpis">'+
+    ((st.branch||{}).token_set&&!(st.branch||{}).hub_url?'<div class="card" style="margin-bottom:14px;padding:10px 14px">'+
+      '<span class="small"><b>Prahari portal</b> &middot; </span>'+portalStatusHTML().replace('margin-bottom:8px','display:inline')+'</div>':'');
+  var sb=((d.branch||{}).standby)?'<div class="card" style="margin-bottom:14px;border-color:#e0a02c"><h2>Standby - not monitoring</h2>'+
+    '<div class="small">'+esc(d.branch.standby)+'</div><div class="small muted" style="margin-top:6px">Close this Prahari, or leave it running as a spare: '+
+    'it takes over by itself if the other one stops.</div></div>':'';
+  return sb+portalBox+'<div class="kpis">'+
     kpi('Devices monitored',h.monitored||0,(h.up||0)+' up · '+(h.degraded||0)+' degraded · '+(h.down||0)+' down')+
     kpi('Open incidents',h.open_incidents||0,(h.critical||0)+' critical')+
     kpi('Internet down',bps(t.total_down_bps||0),'up '+bps(t.total_up_bps||0)+' · '+(t.source||'no flow'))+
@@ -1118,7 +1121,16 @@ function viewSettings(){
        ['low','medium','high','critical'].map(function(v){return '<option '+(em.min_severity===v?'selected':'')+
        '>'+v+'</option>';}).join('')+'</select></div>'+
    '</div>'+
-   '<div class="card"><h2>Head office (hub)</h2>'+
+   '<div class="card"><h2>Prahari portal</h2>'+
+     portalStatusHTML()+
+     '<div class="field"><label>Organisation key</label><input type="text" id="brtok" value="" placeholder="'+
+       ((s.branch||{}).token_set?'******** saved - paste a new key only to change it':'pok_... from prahari.essensai.workers.dev (next to Download)')+'"></div>'+
+     '<div class="small muted">Location name on the portal: <b>'+esc(s.site_name||'not set')+'</b> - this is the Site name at the top of Settings.</div>'+
+     '<div style="margin-top:10px"><button class="sm" onclick="testBranch()">Send a report now</button> '+
+       ((s.branch||{}).token_set?'<button class="sm ghost" onclick="portalDisconnect()">Disconnect</button>':'')+'</div>'+
+     '<div id="brmsg" class="small muted" style="margin-top:6px"></div>'+
+     '<details style="margin-top:16px"><summary class="small muted" style="cursor:pointer">Advanced: run your own head-office hub on the local network instead</summary>'+
+     '<div style="margin-top:10px">'+
      chk('This PC is the head office hub','huben',(s.hub||{}).enabled)+
      fld('Mark a site lost after (minutes)','hubexp',(s.hub||{}).expect_minutes,'number')+
      '<div class="small muted" style="margin:8px 0 6px">Branch tokens (hashed on disk)</div>'+
@@ -1139,16 +1151,9 @@ function viewSettings(){
        '<div class="field" style="display:flex;align-items:flex-end">'+
        '<button class="sm" onclick="addSite()">Add branch &amp; show token</button></div></div>'+
      '<div id="tokmsg" class="small" style="margin-top:6px"></div>'+
-   '</div>'+
-   '<div class="card" style="margin-top:14px"><h2>This site reports to a hub</h2>'+
-     '<div class="small muted" style="margin-bottom:6px">To watch this site on the Prahari portal: paste the organisation key '+
-     '(pok_...) below and Save settings - no Hub URL needed. The site appears on the portal under its Site name.</div>'+
-     fld('Hub URL (blank = Prahari portal; or e.g. http://10.0.0.5:8777)','brurl',(s.branch||{}).hub_url)+
-     '<div class="field"><label>Branch token</label><input type="text" id="brtok" value="" placeholder="'+
-       ((s.branch||{}).token_set?'******** saved':'paste the token head office gave you')+'"></div>'+
+     fld('Report to a hub at (blank = Prahari portal; e.g. http://10.0.0.5:8777)','brurl',(s.branch||{}).hub_url)+
      fld('Report every (seconds)','brint',(s.branch||{}).interval_seconds,'number')+
-     '<button class="sm" onclick="testBranch()">Send a test report</button>'+
-     '<div id="brmsg" class="small muted" style="margin-top:6px"></div>'+
+     '</div></details>'+
    '</div>'+
    '<div class="card"><h2>Factory-password check (opt-in)</h2>'+
      chk('Check devices for factory passwords','dfen',(s.defaults_check||{}).enabled)+
@@ -1241,7 +1246,7 @@ function viewSettings(){
        '<span id="bkmsg" class="small muted"></span></div>'+
      '<div class="small muted" id="bkstate" style="margin-top:8px"></div>'+
    '</div>'+
-   '<div class="card" style="margin-top:14px"><h2>Fleet update</h2>'+
+   ((s.hub||{}).enabled?('<div class="card" style="margin-top:14px"><h2>Fleet update (head-office hub)</h2>'+
      '<div class="small muted" style="margin-bottom:8px">Type a version and every branch that is '+
      'older installs the newest signed release on its next report, even where automatic installs '+
      'are off. Branches only accept releases signed with the Prahari key, so this console '+
@@ -1259,7 +1264,7 @@ function viewSettings(){
        esc(S.data.mirror.version)+' since '+new Date(S.data.mirror.published*1000).toLocaleString()+
        ' ('+Math.round((S.data.mirror.bytes||0)/1048576)+' MB, from '+esc(S.data.mirror.source)+')</div>':'')+
      '</div>'+
-   '</div>'+
+   '</div>'):'')+
    '<div class="card"><h2>Phone alerts (ntfy)</h2>'+
      chk('Send incidents to my phone','pnben',(s.push||{}).enabled)+
      '<div class="grid2">'+
@@ -1299,9 +1304,9 @@ function viewSettings(){
          (s.heartbeat||{}).enabled)+
      fld('Heartbeat URL (healthchecks.io / UptimeRobot push)','hburl',(s.heartbeat||{}).url)+
      fld('Every (seconds)','hbint',(s.heartbeat||{}).interval_seconds,'number')+
-     '<div class="small muted" style="margin-bottom:10px">One check on the head-office hub is '+
-     'enough for the whole chain - it already knows which hotels are reporting. Add per-site '+
-     'checks only for the properties that must be watched independently.</div>'+
+     '<div class="small muted" style="margin-bottom:10px">An outside service alerts you if this Prahari stops '+
+     'running or loses the internet. The Prahari portal already shows when a location stops reporting; '+
+     'add this only where you want a separate alarm.</div>'+
      '<div style="display:flex;gap:8px;align-items:center">'+
      '<button class="sm" onclick="testHeartbeat()">Send test ping</button>'+
      '<span id="hbmsg" class="small muted"></span></div>'+
@@ -1494,6 +1499,16 @@ function testHeartbeat(){
     el.textContent = r.ok ? ('sent - ' + (r.message||'ok')) : ('failed - ' + (r.message||'?'));
   });
 }
+function portalAge(a){ if(a==null) return ''; a=Math.round(a); return a<90?a+' s':Math.round(a/60)+' min'; }
+function portalStatusHTML(){
+  var st=(S.data||{}).settings||{}, br=(S.data||{}).branch||{};
+  if(br.standby) return '<div class="small" style="margin-bottom:8px;color:#e0a02c"><b>Standby</b> - '+esc(br.standby)+'</div>';
+  if(!(st.branch||{}).token_set) return '<div class="small" style="margin-bottom:8px">Not connected. Paste your organisation key and Save settings.</div>';
+  if(br.error) return '<div class="small" style="margin-bottom:8px;color:#e5534b">Not reporting: '+esc(br.error)+'</div>';
+  if(br.last_ok) return '<div class="small" style="margin-bottom:8px;color:#7fd6a0">Connected as <b>'+esc(st.site_name||'')+'</b> &middot; last report '+portalAge(br.age)+' ago</div>';
+  return '<div class="small muted" style="margin-bottom:8px">Connecting ...</div>';
+}
+function portalDisconnect(){ api('/api/portal/disconnect',{method:'POST',body:'{}'}).then(function(){ poll(); }); }
 function portalConnect(){
   var m=document.getElementById('pcmsg'); m.textContent='connecting ...';
   api('/api/portal/connect',{method:'POST',body:JSON.stringify({token:strVal('pctok'),site_name:strVal('pcname')})})
@@ -1933,7 +1948,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.32.3"))
+            .replace("__VERSION__", "1.33.0"))
 
 
 def app_page(version):
@@ -2759,6 +2774,12 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg = self.scanner.connect_portal(payload.get("token", ""), payload.get("site_name", ""))
             self.scanner.audit(who, "portal connect", "ok" if ok else "failed")
             return self._json({"ok": ok, "message": msg})
+        if path == "/api/portal/disconnect":
+            if not self._need("settings", user):
+                return
+            settings.save({"branch": {"token": "", "hub_url": ""}, "portal": {"asked": True, "dismissed": True}})
+            self.scanner.audit(who, "portal disconnect", "")
+            return self._json({"ok": True})
         if path == "/api/portal/later":
             if not self._need("settings", user):
                 return
@@ -2922,7 +2943,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.32.3", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.33.0", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

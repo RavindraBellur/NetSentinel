@@ -678,6 +678,7 @@ def main(argv=None):
         print("  updates     : off")
     else:
         print(f"  updates     : checked every 6 hours, {'installed automatically' if upd.auto_install else 'installed when you choose'}")
+    sc.ensure_branch_reporter()        # report to the portal from the start, not only after the first scan
     _ask_portal_in_console(sc)
     print("  leave this window open. Press Ctrl+C to stop.\n")
     try:

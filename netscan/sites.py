@@ -86,7 +86,7 @@ def summary(scanner):
     """The compact state a branch sends to the hub."""
     snap = scanner.snapshot()
     health = snap.get("health") or {}
-    incidents = [i for i in (snap.get("open_incidents") or [])][:6]
+    incidents = [i for i in (snap.get("open_incidents") or [])][:50]
     traffic = snap.get("traffic") or {}
     wan = snap.get("wan") or {}
     local = snap.get("local") or {}
@@ -108,13 +108,17 @@ def summary(scanner):
                     "up_bps": traffic.get("total_up_bps", 0),
                     "top": [{"name": t.get("name"), "ip": t.get("ip"),
                              "down_bps": t.get("down_bps"), "up_bps": t.get("up_bps")}
-                            for t in (traffic.get("top") or [])[:3]]},
+                            for t in (traffic.get("top") or [])[:10]]},
         "incidents": [{"id": i.get("id"), "title": i.get("title"), "severity": i.get("severity"),
                        "state": i.get("state"), "device_name": i.get("device_name"),
                        "device_ip": i.get("device_ip"), "opened_ts": i.get("opened_ts"),
                        "category": ((i.get("diagnosis") or {}).get("category") or "")}
                       for i in incidents],
+        "install_id": install_id(),
+        "network_id": network_id(snap),
         "devices": len(snap.get("devices") or []),
+        # every device, compact, so the Prahari portal can show this site's full device list
+        "device_list": [_compact_device(d) for d in (snap.get("devices") or [])[:600]],
         "monitored": health.get("monitored", 0),
     }
     try:
@@ -123,6 +127,46 @@ def summary(scanner):
     except Exception:
         payload["sla"] = {}
     return payload
+
+
+def install_id():
+    """A random id for this installation, so the portal can tell two Praharis using the same name apart."""
+    iid = settings.get("install_id")
+    if not iid:
+        iid = secrets.token_hex(8)
+        settings.save({"install_id": iid})
+    return iid
+
+
+def network_id(snap):
+    """A fingerprint of the network this Prahari watches, so the portal allows only one Prahari per network.
+    The router's MAC identifies a network exactly; until it is known, use the subnet, router IP and public IP
+    together (the subnet alone would match every 192.168.0.x network). Empty when nothing is known yet."""
+    devices = snap.get("devices") or []
+    gw = [d for d in devices if d.get("is_gateway") and d.get("mac")]
+    if gw:
+        return "mac:" + hashlib.sha256(gw[0]["mac"].lower().encode()).hexdigest()[:20]
+    local = snap.get("local") or {}
+    public = (snap.get("public") or {}).get("ip") or ""
+    if local.get("network") and local.get("gateway") and public:
+        raw = f'{local["network"]}|{local["gateway"]}|{public}'
+        return "net:" + hashlib.sha256(raw.encode()).hexdigest()[:20]
+    return ""
+
+
+def _compact_device(d):
+    ports = []
+    for p in (d.get("ports") or [])[:24]:
+        if isinstance(p, dict):
+            p = p.get("port")
+        if isinstance(p, int):
+            ports.append(p)
+    num = lambda v: round(v, 1) if isinstance(v, (int, float)) else None
+    return {"ip": d.get("ip") or "", "mac": d.get("mac") or "",
+            "name": (d.get("label") or d.get("hostname") or "")[:80], "vendor": (d.get("vendor") or "")[:60],
+            "type": (d.get("type_label") or d.get("type") or "")[:40], "state": d.get("state") or "",
+            "lat": num(d.get("latency_ms")), "loss": num(d.get("loss_pct")), "ports": ports,
+            "gw": bool(d.get("is_gateway"))}
 
 
 class BranchReporter(threading.Thread):
@@ -162,12 +206,35 @@ class BranchReporter(threading.Thread):
                 ok = 200 <= resp.status < 300
                 body = resp.read(4000).decode("utf-8", "replace")
         except urllib.error.HTTPError as exc:
-            self.last_error = f"hub refused the report: HTTP {exc.code}"
+            portal = url == PORTAL_URL
+            if exc.code == 409:
+                try:
+                    reply = json.loads(exc.read(4000).decode("utf-8", "replace") or "{}")
+                except Exception:
+                    reply = {}
+                if reply.get("standby"):
+                    msg = reply.get("error") or "Another Prahari already watches this network."
+                    if not getattr(self.scanner, "standby", ""):
+                        print("\n  STANDBY: " + msg + "\n")
+                        self.log("standby: " + msg)
+                    self.scanner.standby = msg
+                    self.last_error = msg
+                    return False
+            if portal and exc.code == 401:
+                self.last_error = "the Prahari portal did not accept the organisation key - copy it again from the portal"
+            elif portal and exc.code == 403:
+                self.last_error = "the Prahari portal refused this location (limit reached?)"
+            else:
+                self.last_error = f"{'the Prahari portal' if portal else 'the hub'} refused the report: HTTP {exc.code}"
             return False
         except Exception as exc:
             self.last_error = f"{exc.__class__.__name__}: {exc}"[:160]
             return False
         if ok:
+            if getattr(self.scanner, "standby", ""):
+                print("\n  This Prahari is now the one watching this network - monitoring resumed.\n")
+                self.log("standby ended: this copy now watches the network")
+            self.scanner.standby = ""
             self.last_ok = time.time()
             self.sent += 1
             self.last_error = ""
@@ -193,6 +260,7 @@ class BranchReporter(threading.Thread):
 
     def status(self):
         return {"sent": self.sent, "last_ok": self.last_ok, "error": self.last_error,
+                "standby": getattr(self.scanner, "standby", ""),
                 "age": (time.time() - self.last_ok) if self.last_ok else None}
 
 

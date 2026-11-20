@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.32.3
+# Prahari · प्रहरी — 1.33.0
 
 *the watchman on your network*
 
@@ -21,6 +21,19 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.33.0 — the whole dashboard on the Prahari portal
+
+- Reports to the Prahari portal now carry every device (name, IP, type, maker, state, latency, loss, open ports, MAC),
+  every open incident and the top 10 traffic users, so a location's full detail can be opened on the portal from anywhere.
+- Settings: one "Prahari portal" card (connected or not, last report, organisation key, Disconnect). The head-office
+  hub for a local network moved under Advanced; its Fleet update card shows only on a hub.
+- Overview shows the portal connection in one line. Reporting starts at once, not after the first scan.
+- Each installation has an id, so the portal can warn when two Praharis report under the same location name.
+- Only one Prahari per network: the portal recognises a network by its router and refuses a second Prahari there.
+  The second one goes into standby (no scanning, no alerts, a clear message in the console and dashboard) and takes
+  over by itself if the first one stops reporting for 15 minutes. Different locations may use the same IP range
+  (e.g. both 192.168.0.x) - they have different routers.
 
 ## What's new in 1.32.3 — connect to the portal when Prahari first starts
 

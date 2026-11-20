@@ -129,6 +129,8 @@ class Poller(threading.Thread):
         return None
 
     def poll_once(self):
+        if getattr(self.scanner, "standby", ""):
+            return          # another Prahari watches this network (see Scanner.standby)
         cfg = settings.load()
         th = cfg.get("thresholds") or {}
         targets = self.monitored()
