@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.31
+# Prahari · प्रहरी — 1.32.1
 
 *the watchman on your network*
 
@@ -21,6 +21,14 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.32.1 — the dashboard is easy to find
+
+- The console window now shows a clear **DASHBOARD** box with the address to open (and the LAN address when shared).
+  On Windows Server, where Edge or Chrome is often missing, nothing opened by itself and the console looked like all there was.
+- If no browser window can be opened, the console says so and repeats the address.
+- Chrome or Edge installed for the current user only (`%LOCALAPPDATA%`) is now found too.
+- (1.32.0 was a copy that was never published; 1.32.1 follows 1.31.0 directly.)
 
 ## What's new in 1.31 — sensor history, charts and a wall map
 

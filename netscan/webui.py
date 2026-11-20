@@ -1900,7 +1900,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.31.0"))
+            .replace("__VERSION__", "1.32.1"))
 
 
 def app_page(version):
@@ -2830,10 +2830,15 @@ def _reports_csv(report):
 def _app_window_cmd(url):
     if os.name != "nt":
         return None
+    local = os.environ.get("LOCALAPPDATA") or ""
     for exe in (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
                 r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
                 r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"):
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                os.path.join(local, "Google", "Chrome", "Application", "chrome.exe") if local else "",
+                os.path.join(local, "Microsoft", "Edge", "Application", "msedge.exe") if local else ""):
+        if not exe:
+            continue
         if os.path.exists(exe):
             return [exe, f"--app={url}", "--window-size=1500,950"]
     return None
@@ -2869,7 +2874,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.31.0", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.32.1", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""
@@ -2921,6 +2926,9 @@ def serve(scanner, host="127.0.0.1", port=8777, version="1.31.0", open_browser=T
     if open_browser:
         def _open():
             time.sleep(1.4)
-            open_dashboard(url, app_mode)
+            if open_dashboard(url, app_mode) == "none":
+                # Common on Windows Server: no Edge/Chrome, so nothing opens and the console
+                # window looks like all there is. Say plainly where the dashboard is.
+                print(f"  could not open a browser here - open {url} in Edge or Chrome yourself.")
         threading.Thread(target=_open, daemon=True).start()
     return httpd, url

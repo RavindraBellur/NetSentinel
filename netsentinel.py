@@ -622,6 +622,15 @@ def main(argv=None):
 
     port = getattr(httpd, "dashboard_port", args.port)
     urls = webui.lan_urls(port)
+    print()
+    print("  " + "-" * 56)
+    print("   DASHBOARD - open this address in Edge or Chrome:")
+    print(f"     {urls['local']}")
+    if bind_host == "0.0.0.0" and urls["lan"]:
+        print(f"     {urls['lan']}   (from other PCs on this network)")
+    print("   This window is the Prahari service - keep it open.")
+    print("  " + "-" * 56)
+    print()
     print(f"  dashboard   : {urls['local']}")
     if bind_host == "0.0.0.0":
         if urls["lan"]:

@@ -21,8 +21,8 @@ INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
   <key>CFBundleName</key><string>Prahari</string>
   <key>CFBundleDisplayName</key><string>Prahari</string>
   <key>CFBundleIdentifier</key><string>in.hotelgroup.netsentinel</string>
-  <key>CFBundleVersion</key><string>1.31.0</string>
-  <key>CFBundleShortVersionString</key><string>1.31.0</string>
+  <key>CFBundleVersion</key><string>1.32.1</string>
+  <key>CFBundleShortVersionString</key><string>1.32.1</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>Prahari</string>
   <key>CFBundleIconFile</key><string>netsentinel</string>
