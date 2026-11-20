@@ -52,7 +52,7 @@ label{display:block;font-size:11.5px;color:var(--muted);text-transform:uppercase
 .side{width:212px;flex:0 0 212px;background:var(--bg2);border-right:1px solid var(--line);
       display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
 .brand{display:flex;align-items:center;gap:10px;padding:16px 16px 14px;border-bottom:1px solid var(--line)}
-.logo{width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,#3ba55d,#1d6b3c);
+.logo{width:30px;height:30px;border-radius:7px;background:none;
       display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#04120c}
 .brand .t{font-weight:600;font-size:14px;letter-spacing:.2px}
 .brand .s{font-size:11px;color:var(--muted)}
@@ -1848,10 +1848,10 @@ a.sso:hover{border-color:#3d6a94;background:#20313f}
 
 LOGIN_HTML = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Prahari - sign in</title><style>__CSS____LOGIN_CSS__</style></head><body>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"%3E%3Crect width="64" height="64" rx="14" fill="#1f6f4a"/%3E %3Cpath d="M6 32 C16 15, 48 15, 58 32 C48 49, 16 49, 6 32 Z" fill="#0f2a1f" stroke="#e8f1ec" stroke-width="3.5" stroke-linejoin="round"/%3E %3Ccircle cx="32" cy="32" r="11.5" fill="none" stroke="#7fd6a0" stroke-width="2.6"/%3E %3Cg stroke="#7fd6a0" stroke-width="2.2" stroke-linecap="round"%3E %3Cline x1="32" y1="32" x2="32" y2="22.5"/%3E%3Cline x1="32" y1="32" x2="40.2" y2="36.8"/%3E%3Cline x1="32" y1="32" x2="23.8" y2="36.8"/%3E %3C/g%3E %3Cg fill="#7fd6a0"%3E%3Ccircle cx="32" cy="21.5" r="2.6"/%3E%3Ccircle cx="41" cy="37.3" r="2.6"/%3E%3Ccircle cx="23" cy="37.3" r="2.6"/%3E%3C/g%3E %3Ccircle cx="32" cy="32" r="4.6" fill="#e8f1ec"/%3E%3C/svg%3E"><title>Prahari - sign in</title><style>__CSS____LOGIN_CSS__</style></head><body>
 <div class="login-wrap"><div class="login" id="card">
   <div class="login-left">
-    <div class="lg"><div class="logo">प्र</div>
+    <div class="lg"><div class="logo"><svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1f6f4a"/> <path d="M6 32 C16 15, 48 15, 58 32 C48 49, 16 49, 6 32 Z" fill="#0f2a1f" stroke="#e8f1ec" stroke-width="3.5" stroke-linejoin="round"/> <circle cx="32" cy="32" r="11.5" fill="none" stroke="#7fd6a0" stroke-width="2.6"/> <g stroke="#7fd6a0" stroke-width="2.2" stroke-linecap="round"> <line x1="32" y1="32" x2="32" y2="22.5"/><line x1="32" y1="32" x2="40.2" y2="36.8"/><line x1="32" y1="32" x2="23.8" y2="36.8"/> </g> <g fill="#7fd6a0"><circle cx="32" cy="21.5" r="2.6"/><circle cx="41" cy="37.3" r="2.6"/><circle cx="23" cy="37.3" r="2.6"/></g> <circle cx="32" cy="32" r="4.6" fill="#e8f1ec"/></svg></div>
       <div><div style="font-weight:600;font-size:14px">Prahari &middot; <span style="color:#7fd6a0">प्रहरी</span></div>
       <div style="font-size:11px;color:#8fa6b6">v__VERSION__ network operations console</div></div></div>
     <h1>Your network, watched.</h1>
@@ -1950,21 +1950,21 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.34.2"))
+            .replace("__VERSION__", "1.34.3"))
 
 
 def app_page(version):
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Prahari {version}</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"%3E%3Crect width="64" height="64" rx="14" fill="#1f6f4a"/%3E %3Cpath d="M6 32 C16 15, 48 15, 58 32 C48 49, 16 49, 6 32 Z" fill="#0f2a1f" stroke="#e8f1ec" stroke-width="3.5" stroke-linejoin="round"/%3E %3Ccircle cx="32" cy="32" r="11.5" fill="none" stroke="#7fd6a0" stroke-width="2.6"/%3E %3Cg stroke="#7fd6a0" stroke-width="2.2" stroke-linecap="round"%3E %3Cline x1="32" y1="32" x2="32" y2="22.5"/%3E%3Cline x1="32" y1="32" x2="40.2" y2="36.8"/%3E%3Cline x1="32" y1="32" x2="23.8" y2="36.8"/%3E %3C/g%3E %3Cg fill="#7fd6a0"%3E%3Ccircle cx="32" cy="21.5" r="2.6"/%3E%3Ccircle cx="41" cy="37.3" r="2.6"/%3E%3Ccircle cx="23" cy="37.3" r="2.6"/%3E%3C/g%3E %3Ccircle cx="32" cy="32" r="4.6" fill="#e8f1ec"/%3E%3C/svg%3E"><title>Prahari {version}</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#17603a">
 <link rel="apple-touch-icon" href="/static/icon-192.png">
 <style>{CSS}</style></head>
 <body><div class="app">
   <aside class="side">
-    <div class="brand"><div class="logo">प्र</div><div><div class="t">Prahari <span style="color:#7fd6a0;font-weight:500">प्रहरी</span></div>
+    <div class="brand"><div class="logo"><svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1f6f4a"/> <path d="M6 32 C16 15, 48 15, 58 32 C48 49, 16 49, 6 32 Z" fill="#0f2a1f" stroke="#e8f1ec" stroke-width="3.5" stroke-linejoin="round"/> <circle cx="32" cy="32" r="11.5" fill="none" stroke="#7fd6a0" stroke-width="2.6"/> <g stroke="#7fd6a0" stroke-width="2.2" stroke-linecap="round"> <line x1="32" y1="32" x2="32" y2="22.5"/><line x1="32" y1="32" x2="40.2" y2="36.8"/><line x1="32" y1="32" x2="23.8" y2="36.8"/> </g> <g fill="#7fd6a0"><circle cx="32" cy="21.5" r="2.6"/><circle cx="41" cy="37.3" r="2.6"/><circle cx="23" cy="37.3" r="2.6"/></g> <circle cx="32" cy="32" r="4.6" fill="#e8f1ec"/></svg></div><div><div class="t">Prahari <span style="color:#7fd6a0;font-weight:500">प्रहरी</span></div>
       <div class="s">v{version}</div></div></div>
     <nav id="nav"></nav>
     <div class="side-foot">v{version} console<br><span id="foot-src" class="muted">starting&hellip;</span></div>
@@ -2954,7 +2954,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.34.2", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.34.3", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

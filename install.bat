@@ -4,7 +4,7 @@ cd /d "%~dp0"
 title Prahari - installer
 
 echo ============================================================
-echo   Prahari 1.34.2 - installer
+echo   Prahari 1.34.3 - installer
 echo ============================================================
 echo.
 

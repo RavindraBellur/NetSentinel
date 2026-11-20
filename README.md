@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.34.2
+# Prahari · प्रहरी — 1.34.3
 
 *the watchman on your network*
 
@@ -21,6 +21,11 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.34.3
+
+- New logo - an eye watching the network - for Prahari.exe, the desktop icon, the dashboard and its browser tab
+  (was a plain green dot). Source: prahari-logo.svg.
 
 ## What's new in 1.34.2
 
