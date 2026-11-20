@@ -85,6 +85,14 @@ class Scanner:
         self._scan_thread.start()
         return True
 
+    def ensure_branch_reporter(self):
+        """Start reporting to the hub/portal as soon as it is configured (also right after Save)."""
+        if self.branch_reporter is not None and self.branch_reporter.is_alive():
+            return
+        if sites.branch_target()[0]:
+            self.branch_reporter = sites.BranchReporter(self, log=self.log)
+            self.branch_reporter.start()
+
     def start_monitors(self):
         cfg = settings.load()
         if self.monitoring and self.poller is None:
@@ -96,10 +104,7 @@ class Scanner:
         if self.syslog is None and (cfg.get("syslog") or {}).get("enabled", True):
             self.syslog = syslogrx.SyslogReceiver(self, cfg.get("syslog") or {}, self.log)
             self.syslog.start()
-        branch_cfg = settings.get("branch") or {}
-        if branch_cfg.get("hub_url") and branch_cfg.get("token") and self.branch_reporter is None:
-            self.branch_reporter = sites.BranchReporter(self, log=self.log)
-            self.branch_reporter.start()
+        self.ensure_branch_reporter()
         hub_cfg = settings.get("hub") or {}
         if hub_cfg.get("enabled") and self.lost_contact is None:
             self.lost_contact = sites.LostContactWatcher(self, log=self.log)

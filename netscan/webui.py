@@ -1130,7 +1130,9 @@ function viewSettings(){
      '<div id="tokmsg" class="small" style="margin-top:6px"></div>'+
    '</div>'+
    '<div class="card" style="margin-top:14px"><h2>This site reports to a hub</h2>'+
-     fld('Hub URL (e.g. http://10.0.0.5:8777)','brurl',(s.branch||{}).hub_url)+
+     '<div class="small muted" style="margin-bottom:6px">To watch this site on the Prahari portal: paste the portal token '+
+     '(psk_...) below and Save settings - no Hub URL needed.</div>'+
+     fld('Hub URL (blank = Prahari portal; or e.g. http://10.0.0.5:8777)','brurl',(s.branch||{}).hub_url)+
      '<div class="field"><label>Branch token</label><input type="text" id="brtok" value="" placeholder="'+
        ((s.branch||{}).token_set?'******** saved':'paste the token head office gave you')+'"></div>'+
      fld('Report every (seconds)','brint',(s.branch||{}).interval_seconds,'number')+
@@ -1722,6 +1724,7 @@ function closeDrawer(){ document.getElementById('drawer').classList.remove('open
 // -------------------------------------------------------------------- shell --
 function render(){
   if(!S.data) return;
+  S.dirty=false;
   nav(); head();
   var v={overview:viewOverview,devices:viewDevices,incidents:viewIncidents,
          topology:viewTopology,sensors:viewSensors,map:viewMap,exposure:viewExposure,traffic:viewTraffic,
@@ -1733,8 +1736,19 @@ function render(){
     '<div class="small muted" style="margin-top:8px">The rest of the console still works; '+
     'reload, and if it persists send this message with the version.</div></div>'; }
 }
-function poll(){
-  return api('/api/state').then(function(d){ S.data=d; render(); }).catch(function(){});
+// The background refresh must not redraw a form someone is filling in (Settings, Users, Sensors ...):
+// it used to wipe a pasted token or password every 3 seconds, before Save could be reached.
+function editing(){
+  var a=document.activeElement, v=document.getElementById('view');
+  if(S.dirty) return true;
+  return !!(a&&v&&v.contains(a)&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName));
+}
+function poll(background){
+  return api('/api/state').then(function(d){
+    S.data=d;
+    if(background===true&&editing()){ nav(); head(); return; }
+    render();
+  }).catch(function(){});
 }
 function applyHash(){
   var h=(location.hash||'').slice(1);
@@ -1742,8 +1756,10 @@ function applyHash(){
   S.tab=h||'overview'; render();
 }
 window.addEventListener('hashchange',applyHash);
+['input','change'].forEach(function(ev){ document.addEventListener(ev,function(e){
+  var v=document.getElementById('view'); if(v&&e.target&&v.contains(e.target)) S.dirty=true; }); });
 document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeDrawer(); });
-poll().then(applyHash); setInterval(poll,3000);
+poll().then(applyHash); setInterval(function(){ poll(true); },3000);
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }
 """
 
@@ -1900,7 +1916,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.32.1"))
+            .replace("__VERSION__", "1.32.2"))
 
 
 def app_page(version):
@@ -2481,6 +2497,10 @@ class Handler(BaseHTTPRequestHandler):
             from .safety import record_acknowledgements
             record_acknowledgements(settings.load(), payload, who, store.add_event)
             self.scanner.update_settings(payload)
+            try:
+                self.scanner.ensure_branch_reporter()
+            except Exception:
+                pass
             self.scanner.audit(who, "settings changed",
                                ", ".join(sorted(payload.keys()))[:120])
             return self._json({"ok": True})
@@ -2874,7 +2894,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.32.1", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.32.2", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

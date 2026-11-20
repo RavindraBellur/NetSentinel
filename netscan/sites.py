@@ -23,6 +23,18 @@ import urllib.request
 from . import alerts, diagnose, settings, store
 
 REPORT_PATH = "/api/branch/report"
+# A token made on the Prahari portal (psk_...) needs no hub address: the portal is the hub.
+PORTAL_URL = "https://prahari.essensai.workers.dev"
+
+
+def branch_target():
+    """(hub_url, token) this site reports to, or ("", "") when it is not set up."""
+    branch = settings.get("branch") or {}
+    token = (branch.get("token") or "").strip()
+    url = (branch.get("hub_url") or "").strip().rstrip("/")
+    if not url and token.startswith("psk_"):
+        url = PORTAL_URL
+    return (url, token) if url and token else ("", "")
 
 
 def token_hash(token):
@@ -113,8 +125,7 @@ class BranchReporter(threading.Thread):
 
     def config(self):
         branch = settings.get("branch") or {}
-        url = (branch.get("hub_url") or "").rstrip("/")
-        token = branch.get("token") or ""
+        url, token = branch_target()
         interval = int(branch.get("interval_seconds") or 30)
         return url, token, max(10, interval)
 

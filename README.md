@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.32.1
+# Prahari · प्रहरी — 1.32.2
 
 *the watchman on your network*
 
@@ -21,6 +21,14 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.32.2 — Settings keeps what you type
+
+- Fixed: the dashboard refreshes every 3 seconds, and that redraw wiped anything typed or pasted in Settings
+  (or any other form) before it could be saved - a pasted hub token simply vanished. The refresh now waits
+  while you are editing; saving, or switching tabs, shows the fresh data.
+- Watching a site on the Prahari portal is now: paste the portal token (psk_...) in Settings -> This site reports
+  to a hub, and Save settings. No Hub URL, no rescan or restart - reporting starts on Save.
 
 ## What's new in 1.32.1 — the dashboard is easy to find
 
