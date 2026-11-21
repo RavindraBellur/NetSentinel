@@ -10,6 +10,12 @@ actually cares about, and they are defined as data, not code:
     cert     how many days until the certificate expires
     snmp     an OID returns a number, compared with a threshold (UPS battery, temperature)
     ping     the host answers
+    service  a Windows service / systemd unit is running
+    proc     a process is running
+    wmi      a Windows performance counter or WMI count (free disk, CPU) - Windows only
+    sqlite   one read-only query against a SQLite file (e.g. invoices in the last hour)
+
+TEMPLATES holds ready-made sensors for the checks a hotel usually wants first.
 
 Each sensor has its own interval and its own warning/critical limits, keeps a short history,
 and raises an event (and an alert) only when its state changes - so a dead page does not mail
@@ -25,6 +31,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import os
 import socket
 import ssl
 import time
@@ -34,10 +41,78 @@ import urllib.request
 from . import settings, store
 
 UP, WARN, DOWN = "up", "warn", "down"
-KINDS = ("http", "tcp", "dns", "cert", "snmp", "ping", "service", "proc")
+KINDS = ("http", "tcp", "dns", "cert", "snmp", "ping", "service", "proc", "wmi", "sqlite")
 
 
 # ----------------------------------------------------------------- helpers --
+TEMPLATES = {
+    "booking": {
+        "label": "Booking engine page",
+        "ask": "URL of the booking page",
+        "sensor": {"type": "http", "target": "https://www.example.com/booking",
+                   "expect_status": 200, "expect_text": "Book", "interval": 300},
+        "why": "The page guests actually use - a 500 here is lost revenue."},
+    "pms": {
+        "label": "PMS port on the server",
+        "ask": "IP of the PMS server (set the port too)",
+        "sensor": {"type": "tcp", "target": "192.168.1.10", "port": 8080, "interval": 60},
+        "why": "If the property management system's port closes, reception is blind."},
+    "portal": {
+        "label": "Guest Wi-Fi portal certificate",
+        "ask": "host name of the captive portal",
+        "sensor": {"type": "cert", "target": "portal.example.com", "port": 443,
+                   "warn_value": 21, "crit_value": 7, "interval": 3600},
+        "why": "An expired captive-portal certificate locks every guest out."},
+    "ups": {
+        "label": "UPS battery capacity",
+        "ask": "IP of the UPS network card (SNMP)",
+        "sensor": {"type": "snmp", "target": "192.168.1.20",
+                   "oid": "1.3.6.1.2.1.33.1.2.4.0", "operator": "<",
+                   "warn_value": 60, "crit_value": 30, "interval": 300},
+        "why": "Battery below 60% means the next power cut takes the network with it."},
+    "disk": {
+        "label": "Server free disk space (C:)",
+        "ask": "counter (default: C: on this PC)",
+        "sensor": {"type": "wmi", "target": "\\LogicalDisk(C:)\\% Free Space",
+                   "operator": "<", "warn_value": 15, "crit_value": 5, "interval": 900},
+        "why": "A full C: stops the billing database and the backups with it."},
+    "switch_ping": {
+        "label": "Core switch answers",
+        "ask": "IP of the switch",
+        "sensor": {"type": "ping", "target": "192.168.1.2", "interval": 60},
+        "why": "The switch every floor access point hangs off."},
+    "invoice_rows": {
+        "label": "Invoices created in the last hour",
+        "ask": "path of the billing SQLite file (edit the query to match your tables)",
+        "sensor": {"type": "sqlite", "target": "C:\\Billing\\billing.db",
+                   "query": "SELECT COUNT(*) FROM invoices WHERE created > "
+                            "datetime('now','-1 hour')",
+                   "operator": "<", "warn_value": 1, "crit_value": 1, "interval": 3600},
+        "why": "No invoices for an hour during service means the till chain is broken."},
+}
+
+
+def templates():
+    """The library as the dashboard shows it."""
+    return [{"key": k, "label": t["label"], "ask": t["ask"], "why": t["why"],
+             "sensor": dict(t["sensor"])} for k, t in TEMPLATES.items()]
+
+
+def from_template(name, target=None, **overrides):
+    """A ready-made sensor from the library, with the target (and anything else) replaced."""
+    template = TEMPLATES.get((name or "").strip().lower())
+    if not template:
+        return None
+    sensor = dict(template["sensor"])
+    sensor["name"] = template["label"]
+    if target:
+        sensor["target"] = target
+    for key, value in overrides.items():
+        if value not in (None, ""):
+            sensor[key] = value
+    return sensor
+
+
 def sensor_id(sensor):
     base = f"{sensor.get('type')}|{sensor.get('target')}|{sensor.get('port','')}|{sensor.get('name','')}"
     return "S-" + hashlib.sha1(base.encode()).hexdigest()[:10]
@@ -238,9 +313,91 @@ def check_proc(sensor):
         return DOWN, 0, f"{exc.__class__.__name__}"
 
 
+def _judge(number, sensor):
+    """Compare a number with the sensor's warning / critical limits."""
+    warn = _number(sensor.get("warn_value"))
+    crit = _number(sensor.get("crit_value"))
+    op = sensor.get("operator") or ">"
+    if crit is not None and _compare(number, op, crit):
+        return DOWN, number, f"{number:g} {op} {crit:g}"
+    if warn is not None and _compare(number, op, warn):
+        return WARN, number, f"{number:g} {op} {warn:g}"
+    return UP, number, f"{number:g}"
+
+
+def _ps_quote(text):
+    """A PowerShell single-quoted literal: nothing inside it is interpreted."""
+    return "'" + str(text).replace("'", "''") + "'"
+
+
+def wmi_script(target):
+    """The PowerShell for a wmi sensor. The target only ever appears as a quoted literal."""
+    target = (target or "").strip()
+    if target.lower().startswith("select "):
+        return f"@(Get-CimInstance -Query {_ps_quote(target)} -ErrorAction Stop).Count"
+    return (f"(Get-Counter -Counter {_ps_quote(target)} -ErrorAction Stop)"
+            f".CounterSamples[0].CookedValue")
+
+
+def check_wmi(sensor):
+    """A Windows performance counter (e.g. \\LogicalDisk(C:)\\% Free Space) or the row count
+    of a WMI query (SELECT * FROM Win32_Service WHERE State='Stopped' AND StartMode='Auto').
+
+    Reads this PC only. Windows only."""
+    import subprocess
+    import sys
+    if sys.platform != "win32":
+        return DOWN, 0, "WMI sensors work on Windows only"
+    target = (sensor.get("target") or "").strip()
+    if not target:
+        return DOWN, 0, "no counter given"
+    try:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        proc = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                               wmi_script(target)], capture_output=True, text=True,
+                              timeout=30, creationflags=flags)
+        lines = [x for x in (proc.stdout or "").strip().splitlines() if x.strip()]
+        if not lines:
+            return DOWN, 0, ((proc.stderr or "").strip().splitlines() or ["no output"])[0][:100]
+        return _judge(float(lines[-1].strip().replace(",", ".")), sensor)
+    except Exception as exc:
+        return DOWN, 0, f"{exc.__class__.__name__}: {str(exc)[:60]}"
+
+
+def check_sqlite(sensor):
+    """One read-only query against a SQLite file; the first column of the first row is judged.
+
+    `target` is the file, `query` the SELECT. The file is opened read-only, so even a query
+    that tried to write would be refused by SQLite itself."""
+    import sqlite3
+    path = (sensor.get("target") or "").strip()
+    query = (sensor.get("query") or sensor.get("oid") or "").strip().rstrip(";")
+    if not path or not query:
+        return DOWN, 0, "a database path and a query are required"
+    if not query.lower().startswith(("select", "with")) or ";" in query:
+        return DOWN, 0, "only a single SELECT is allowed"
+    if not os.path.exists(path):
+        return DOWN, 0, "database file not found"
+    try:
+        uri = "file:" + urllib.request.pathname2url(os.path.abspath(path)) + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=5)
+        try:
+            row = conn.execute(query).fetchone()
+        finally:
+            conn.close()
+        value = row[0] if row else 0
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return UP, 0, str(value)[:60]
+        return _judge(number, sensor)
+    except Exception as exc:
+        return DOWN, 0, f"{exc.__class__.__name__}: {str(exc)[:60]}"
+
+
 CHECKS = {"http": check_http, "tcp": check_tcp, "dns": check_dns, "cert": check_cert,
           "snmp": check_snmp, "ping": check_ping, "service": check_service,
-          "proc": check_proc}
+          "proc": check_proc, "wmi": check_wmi, "sqlite": check_sqlite}
 
 
 def _number(value):
@@ -338,6 +495,10 @@ class SensorRunner:
                      "type": sensor.get("type"), "target": sensor.get("target"),
                      "state": state, "message": message, "value": value, "ts": int(now),
                      "maintenance": quiet, "reason": reason,
+                     "since": (previous.get("since") if previous.get("state") == state
+                               else int(now)) or int(now),
+                     "paged": (previous.get("paged") or []) if previous.get("state") == state
+                     else [],
                      "history": (previous.get("history") or [])[-40:]}
             entry["history"].append({"ts": int(now), "state": state, "value": value})
             try:
@@ -380,4 +541,4 @@ class SensorRunner:
         counts = {UP: 0, WARN: 0, DOWN: 0, "unknown": 0}
         for row in rows:
             counts[row.get("state")] = counts.get(row.get("state"), 0) + 1
-        return {"sensors": rows, "counts": counts, "total": len(rows)}
+        return {"sensors": rows, "counts": counts, "total": len(rows), "templates": templates()}

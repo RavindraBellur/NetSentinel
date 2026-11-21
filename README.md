@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.36.1
+# Prahari · प्रहरी — 1.37.0
 
 *Your network's 24x7 guard*
 
@@ -21,6 +21,21 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.37.0 — escalation, ready-made sensors, config backup
+
+- **Escalation** (Settings → Escalation): if an incident or a down sensor is still open after the minutes you set,
+  the next people are told by email, phone push or Telegram, once per step, with a cap per problem and quiet hours
+  (only critical/high problems page at night). Every page is written into the incident's timeline.
+- **Ready-made sensors** (Sensors → Ready-made sensors): booking page, PMS port, guest-portal certificate, UPS battery,
+  server free disk, core switch, invoices in the last hour - pick one, change the target, add it.
+- **Two new sensor types:** `wmi` (a Windows counter or WMI count on this PC, e.g. free disk space) and `sqlite`
+  (one read-only SELECT against a database file, e.g. "invoices in the last hour").
+- **Configuration backup** (Settings → Configuration backup): every N hours Prahari copies the running configuration
+  of the switches, routers and firewalls you list (Cisco, Aruba, HP, D-Link, TP-Link, Juniper, MikroTik, Ubiquiti,
+  Fortinet, pfSense, Linux) over key-based SSH with one fixed read-only command, keeps 30 dated copies, and emails the
+  exact lines that changed. Private LAN addresses only. Sophos is not supported over SSH (its console is a menu) - use
+  Sophos's own scheduled backup. Also `Prahari.exe --config-backup`.
 
 ## What's new in 1.36.1
 

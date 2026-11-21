@@ -593,7 +593,7 @@ function viewMap(){
 }
 function viewSensors(){
   var sn=((S.data||{}).insights||{}).sensors||{}, rows=sn.sensors||[], c=sn.counts||{};
-  var kindOpts=['http','tcp','dns','cert','snmp','ping','service','proc'].map(function(k){
+  var kindOpts=['http','tcp','dns','cert','snmp','ping','service','proc','wmi','sqlite'].map(function(k){
     return '<option>'+k+'</option>'; }).join('');
   var body=rows.length? rows.map(function(r){
     var col=r.state==='down'?'sev-critical':(r.state==='warn'?'sev-high':(r.state==='up'?'sev-info':''));
@@ -621,6 +621,15 @@ function viewSensors(){
     '<div class="card"><h2>Service checks</h2><table><thead><tr><th>State</th><th>Name</th>'+
     '<th>Type</th><th>Target</th><th>Last result</th><th>Checked</th><th class="num">Every</th>'+
     '<th>Trend</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>'+
+    (can('settings') && (sn.templates||[]).length? '<div class="card" style="margin-top:14px"><h2>Ready-made sensors</h2>'+
+    '<div class="small muted" style="margin-bottom:8px">Pick one, change the target to your own, add it.</div>'+
+    '<div class="grid3"><div class="field"><label>Template</label><select id="sntpl" onchange="tplPick()">'+
+      '<option value="">choose ...</option>'+(sn.templates||[]).map(function(t){
+        return '<option value="'+esc(t.key)+'">'+esc(t.label)+'</option>'; }).join('')+'</select></div>'+
+      fld('Target','tpltarget','')+fld('Port (if any)','tplport','','number')+'</div>'+
+    '<div id="tplwhy" class="small muted" style="margin-bottom:8px"></div>'+
+    '<button class="sm" onclick="addTemplate()">Add this sensor</button> '+
+    '<span id="tplmsg" class="small muted"></span></div>' : '')+
     (can('settings')? '<div class="card" style="margin-top:14px"><h2>Add a sensor</h2>'+
     '<div class="grid3">'+fld('Name','snname','')+
       '<div class="field"><label>Type</label><select id="sntype">'+kindOpts+'</select></div>'+
@@ -631,6 +640,12 @@ function viewSensors(){
     '<div class="grid3">'+fld('Warn value (cert days, snmp)','snwarn','','number')+
       fld('Critical value','sncrit','','number')+
       fld('SNMP OID (snmp type)','snoid','')+'</div>'+
+    '<div class="grid3"><div class="field"><label>Alert when value is</label><select id="snop">'+
+      '<option value="">above the limit (&gt;)</option><option value="&lt;">below the limit (&lt;)</option></select></div>'+
+      '<div class="field" style="grid-column:span 2">'+'<label>Query (sqlite type - one SELECT)</label>'+
+      '<input type="text" id="snquery" placeholder="SELECT COUNT(*) FROM invoices WHERE created &gt; datetime(\'now\',\'-1 hour\')"></div></div>'+
+    '<div class="small muted" style="margin-bottom:8px">wmi: a Windows counter on this PC, e.g. \\LogicalDisk(C:)\\% Free Space, '+
+      'or a WMI query that is counted. sqlite: the target is the database file; it is opened read-only.</div>'+
     '<button class="sm" onclick="addSensor()">Add sensor</button> '+
     '<span id="snmsg" class="small muted"></span></div>' : '');
 }
@@ -638,10 +653,28 @@ function addSensor(){
   var body={name:strVal('snname'),type:(document.getElementById('sntype')||{}).value||'http',
     target:strVal('sntarget'),port:num('snport',0)||'',expect_text:strVal('snexpect'),
     expect_status:num('snexpect',0)||'',interval:num('snint',60),
-    warn_value:num('snwarn',0)||'',crit_value:num('sncrit',0)||'',oid:strVal('snoid')};
+    warn_value:strVal('snwarn'),crit_value:strVal('sncrit'),oid:strVal('snoid'),
+    operator:(document.getElementById('snop')||{}).value||'',query:strVal('snquery')};
   if(!body.target){ document.getElementById('snmsg').textContent='a target is required'; return; }
   api('/api/sensors/save',{method:'POST',body:JSON.stringify({sensor:body})}).then(function(r){
     document.getElementById('snmsg').textContent = r.ok? 'added' : ('failed: '+(r.message||'?'));
+    poll();
+  });
+}
+function tplPick(){
+  var key=(document.getElementById('sntpl')||{}).value||'';
+  var t=((((S.data||{}).insights||{}).sensors||{}).templates||[]).filter(function(x){return x.key===key;})[0];
+  var why=document.getElementById('tplwhy'), tg=document.getElementById('tpltarget'), pt=document.getElementById('tplport');
+  if(!t){ why.textContent=''; return; }
+  why.textContent=t.why+' Target: '+t.ask+'.';
+  tg.value=t.sensor.target||''; pt.value=t.sensor.port||'';
+}
+function addTemplate(){
+  var key=(document.getElementById('sntpl')||{}).value||'', el=document.getElementById('tplmsg');
+  if(!key){ el.textContent='choose a template first'; return; }
+  api('/api/sensors/template',{method:'POST',body:JSON.stringify({template:key,
+    target:strVal('tpltarget'),port:num('tplport',0)||''})}).then(function(r){
+    el.textContent = r.ok? 'added' : ('failed: '+(r.message||'?'));
     poll();
   });
 }
@@ -787,6 +820,52 @@ function publishFleet(){
   var el=document.getElementById('pubmsg'); el.textContent='fetching and checking the signature ...';
   api('/api/fleet/publish',{method:'POST',body:JSON.stringify({folder:strVal('pubdir')})}).then(function(r){
     el.textContent=r.message||(r.ok?'published':'failed'); poll();
+  });
+}
+function saveEscalation(){
+  var el=document.getElementById('escmsg'); el.textContent='saving ...';
+  api('/api/escalation/save',{method:'POST',body:JSON.stringify({
+    enabled:chkVal('escen'), steps:strVal('escsteps'), max_pages_per_incident:num('escmax',3),
+    quiet_hours:strVal('escquiet')})}).then(function(r){
+      el.textContent = r.ok? ('saved'+(r.message?' - '+r.message:'')) : ('not saved - '+(r.message||'?'));
+      poll();
+  });
+}
+function saveConfigBackup(){
+  var el=document.getElementById('cfgmsg'); el.textContent='saving ...';
+  api('/api/configbackup/save',{method:'POST',body:JSON.stringify({
+    enabled:chkVal('cfgen'), user:strVal('cfguser'), key:strVal('cfgkey'),
+    every_hours:num('cfghours',24), devices:strVal('cfgdevs')})}).then(function(r){
+      el.textContent = r.ok? ('saved'+(r.message?' - '+r.message:'')) : ('not saved - '+(r.message||'?'));
+      poll();
+  });
+}
+function runConfigBackup(){
+  var el=document.getElementById('cfgmsg'); el.textContent='backing up ... (can take a minute)';
+  api('/api/configbackup/run',{method:'POST',body:'{}'}).then(function(r){
+    el.textContent = r.ok? ((r.results||[]).length+' device(s) done') : ('failed - '+(r.message||'?'));
+    poll();
+  });
+}
+function configBackupTable(){
+  var cb=((S.data||{}).insights||{}).config_backup||{}, res=cb.results||[], stored=cb.stored||[];
+  var probs=(cb.problems||[]).map(function(p){ return '<div class="small" style="color:#e0a02c">'+esc(p)+'</div>'; }).join('');
+  if(!res.length && !stored.length) return probs;
+  var last={}; res.forEach(function(r){ last[r.host]=r; });
+  var hosts={}; stored.forEach(function(x){ hosts[x.host]=x; }); res.forEach(function(r){ hosts[r.host]=hosts[r.host]||{host:r.host}; });
+  return probs+'<table style="margin-top:10px"><thead><tr><th>Device</th><th>Last run</th><th>Copies</th><th>Latest copy</th><th></th></tr></thead><tbody>'+
+    Object.keys(hosts).map(function(h){
+      var r=last[h]||{}, st=hosts[h];
+      var state=!r.ts?'-':(r.ok?(r.changed?'<span class="badge sev-high">changed</span>':(r.first_run?'first copy':'unchanged')):
+        '<span class="badge sev-critical">failed</span> <span class="small">'+esc(r.reason||'')+'</span>');
+      return '<tr><td class="mono small">'+esc(r.name||h)+'</td><td class="small">'+state+'</td>'+
+        '<td class="num small">'+(st.copies||0)+'</td><td class="small">'+(st.when?ago(st.when):'-')+'</td>'+
+        '<td>'+((st.copies||0)>1?'<button class="sm ghost" onclick="showConfigDiff(\''+esc(h)+'\')">last change</button>':'')+'</td></tr>';
+    }).join('')+'</tbody></table><pre id="cfgdiff" class="small mono" style="white-space:pre-wrap;max-height:320px;overflow:auto"></pre>';
+}
+function showConfigDiff(host){
+  api('/api/configbackup/diff?host='+encodeURIComponent(host)).then(function(r){
+    var el=document.getElementById('cfgdiff'); if(el) el.textContent=r.diff||'no stored change yet';
   });
 }
 function saveQuiet(){
@@ -1197,6 +1276,43 @@ function viewSettings(){
      'incident - one alert instead of a cascade.</div>'+
      '<button class="sm" style="margin-top:8px" onclick="saveQuiet()">Save</button> '+
      '<span id="qmsg" class="small muted"></span>'+
+   '</div>'+
+   '<div class="card"><h2>Escalation - when nobody reacts</h2>'+
+     chk('Escalate problems nobody acknowledges','escen',(s.escalation||{}).enabled)+
+     '<div class="field"><label>Steps - one per line: minutes | channels | email addresses'+
+     '</label><textarea id="escsteps" rows="3" placeholder="20 | email+push | gm@hotel.in&#10;60 | email+telegram | owner@hotel.in" '+
+     'style="width:100%;background:#0f151c;border:1px solid #243040;border-radius:6px;color:#e8eef5;padding:8px;font:12px ui-monospace,monospace">'+
+     esc(((s.escalation||{}).steps||[]).map(function(st){
+       return [st.after_minutes||'', (st.channels||[]).join('+'), (st.to||[]).join(', ')].join(' | ');
+     }).join('\n'))+'</textarea></div>'+
+     '<div class="grid2">'+fld('Max pages per problem','escmax',(s.escalation||{}).max_pages_per_incident||3,'number')+
+       fld('Quiet hours (e.g. 23:00-07:00)','escquiet',(s.escalation||{}).quiet_hours||'')+'</div>'+
+     '<div class="small muted">The first alert is the normal one (Email / Phone alerts). If the '+
+     'problem is still open and nobody has closed it after the minutes on a line, those people are '+
+     'told - once per line. Channels: email, push, telegram. Inside quiet hours only critical and '+
+     'high problems escalate. Covers incidents and sensors that are down.</div>'+
+     '<button class="sm" style="margin-top:8px" onclick="saveEscalation()">Save</button> '+
+     '<span id="escmsg" class="small muted"></span>'+
+   '</div>'+
+   '<div class="card"><h2>Configuration backup</h2>'+
+     chk('Back up switch / router / firewall configs and alert on change','cfgen',(s.config_backup||{}).enabled)+
+     '<div class="grid3">'+fld('SSH user','cfguser',(s.config_backup||{}).user||'')+
+       fld('Private key file (full path)','cfgkey',(s.config_backup||{}).key||'')+
+       fld('Every (hours)','cfghours',(s.config_backup||{}).every_hours||24,'number')+'</div>'+
+     '<div class="field"><label>Devices - one per line: IP | kind | name</label>'+
+     '<textarea id="cfgdevs" rows="3" placeholder="192.168.1.2 | cisco | Core switch" '+
+     'style="width:100%;background:#0f151c;border:1px solid #243040;border-radius:6px;color:#e8eef5;padding:8px;font:12px ui-monospace,monospace">'+
+     esc(((s.config_backup||{}).devices||[]).map(function(d){
+       return typeof d==='string'? d : [d.ip||'',d.kind||'',d.name||''].join(' | ');
+     }).join('\n'))+'</textarea></div>'+
+     '<div class="small muted">Kinds: cisco, aruba, hp, dlink, tplink, juniper, mikrotik, ubiquiti, '+
+     'fortinet, pfsense, linux. Key-based SSH only, one read-only command per kind, private LAN '+
+     'addresses only. Sophos is not supported over SSH (its console is a menu) - use Sophos&#39;s own '+
+     'scheduled backup. Each change is emailed with the exact lines that moved.</div>'+
+     '<button class="sm" style="margin-top:8px" onclick="saveConfigBackup()">Save</button> '+
+     '<button class="sm ghost" style="margin-top:8px" onclick="runConfigBackup()">Back up now</button> '+
+     '<span id="cfgmsg" class="small muted"></span>'+
+     configBackupTable()+
    '</div>'+
    '<div class="card" style="margin-top:14px"><h2>Secrets at rest</h2>'+
      '<div class="small muted" id="vaultstate">checking&hellip;</div>'+
@@ -1951,7 +2067,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.36.1"))
+            .replace("__VERSION__", "1.37.0"))
 
 
 def app_page(version):
@@ -2232,6 +2348,19 @@ class Handler(BaseHTTPRequestHandler):
                 devices = list(self.scanner.devices.values())
             from . import ports as ports_mod
             return self._json(ports_mod.exposure(devices))
+        if path == "/api/configbackup/diff":
+            user = self._user()
+            if user is None or not auth.can(user.get("role"), "settings"):
+                self._send(403, "settings permission required", "text/plain")
+                return
+            from . import configbackup
+            host = (parse_qs(parsed.query).get("host") or [""])[0]
+            known = {d["ip"] for d in configbackup.parse_devices(
+                (settings.load().get("config_backup") or {}).get("devices") or [])[0]}
+            known |= {x["host"] for x in configbackup.listing()}
+            if host not in known:
+                return self._json({"ok": False, "diff": ""})
+            return self._json({"ok": True, "diff": configbackup.diff_latest(host)})
         if path == "/api/sensor/history":
             user = self._user()
             if user is None:
@@ -2581,6 +2710,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "message": "unknown sensor type"})
             if not sensor.get("target"):
                 return self._json({"ok": False, "message": "a target is required"})
+            if sensor.get("type") == "sqlite":
+                q = (sensor.get("query") or sensor.get("oid") or "").strip().rstrip(";")
+                if not q.lower().startswith(("select", "with")) or ";" in q:
+                    return self._json({"ok": False, "message": "sqlite needs one SELECT query"})
+                sensor["query"] = q
+            sensor = {k: v for k, v in sensor.items() if v not in (None, "")}
             cfg = settings.load()
             current = [x for x in (cfg.get("sensors") or []) if isinstance(x, dict)]
             from . import sensors as sensors_mod
@@ -2589,6 +2724,87 @@ class Handler(BaseHTTPRequestHandler):
             current.append(sensor)
             settings.save({"sensors": current})
             return self._json({"ok": True, "id": sensor["id"]})
+        if path == "/api/sensors/template":
+            if not self._need("settings", user):
+                return
+            from . import sensors as sensors_mod
+            port = payload.get("port")
+            sensor = sensors_mod.from_template(payload.get("template"),
+                                               (payload.get("target") or "").strip() or None,
+                                               port=int(port) if str(port or "").isdigit() else None)
+            if not sensor:
+                return self._json({"ok": False, "message": "unknown template"})
+            sensor["id"] = sensors_mod.sensor_id(sensor)
+            current = [x for x in (settings.load().get("sensors") or [])
+                       if isinstance(x, dict) and x.get("id") != sensor["id"]]
+            settings.save({"sensors": current + [sensor]})
+            self.scanner.audit(who, "sensor added from template", sensor["name"])
+            return self._json({"ok": True, "id": sensor["id"]})
+        if path == "/api/escalation/save":
+            if not self._need("settings", user):
+                return
+            from . import escalation as esc_mod
+            rows, bad = [], []
+            text = payload.get("steps") or ""
+            lines = text.splitlines() if isinstance(text, str) else []
+            for n, line in enumerate(lines, 1):
+                if not line.strip():
+                    continue
+                parts = [x.strip() for x in line.split("|")]
+                parts += [""] * (3 - len(parts))
+                cleaned = esc_mod.clean_steps([{"after_minutes": parts[0], "channels": parts[1],
+                                                "to": parts[2]}])
+                if cleaned:
+                    rows += cleaned
+                else:
+                    bad.append(f"line {n}")
+            quiet = (payload.get("quiet_hours") or "").strip()
+            import re as _re
+            if quiet and not _re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d\s*-\s*([01]?\d|2[0-3]):[0-5]\d", quiet):
+                return self._json({"ok": False, "message": "quiet hours look like 23:00-07:00"})
+            try:
+                cap = max(1, min(10, int(payload.get("max_pages_per_incident") or 3)))
+            except (TypeError, ValueError):
+                cap = 3
+            settings.save({"escalation": {"enabled": bool(payload.get("enabled")),
+                                          "steps": esc_mod.clean_steps(rows),
+                                          "max_pages_per_incident": cap,
+                                          "quiet_hours": quiet}})
+            self.scanner.audit(who, "escalation changed", f"{len(rows)} step(s)")
+            msg = ""
+            if bad:
+                msg = (f"skipped {', '.join(bad)} - write: minutes | email+push | "
+                       f"name@company.com")
+            return self._json({"ok": True, "message": msg, "steps": len(rows)})
+        if path == "/api/configbackup/save":
+            if not self._need("settings", user):
+                return
+            from . import configbackup
+            lines = [ln.replace("|", " ") for ln in
+                     str(payload.get("devices") or "").splitlines() if ln.strip()]
+            devices, problems = configbackup.parse_devices(lines)
+            key = (payload.get("key") or "").strip()
+            if key and not os.path.isfile(os.path.expanduser(key)):
+                problems.append(f"key file {key} not found on this PC")
+            try:
+                hours = max(1, min(24 * 7, int(payload.get("every_hours") or 24)))
+            except (TypeError, ValueError):
+                hours = 24
+            settings.save({"config_backup": {
+                "enabled": bool(payload.get("enabled")), "user": (payload.get("user") or "").strip(),
+                "key": key, "every_hours": hours, "devices": devices}})
+            self.scanner.audit(who, "config backup changed", f"{len(devices)} device(s)")
+            return self._json({"ok": True, "message": "; ".join(problems)[:300]})
+        if path == "/api/configbackup/run":
+            if not self._need("settings", user):
+                return
+            if not (settings.load().get("config_backup") or {}).get("enabled"):
+                return self._json({"ok": False, "message": "turn it on and save first"})
+            results = self.scanner.run_config_backup(wait=True)
+            if results is None:
+                return self._json({"ok": False, "message": "a backup is already running"})
+            return self._json({"ok": True, "results": [{k: v for k, v in r.items() if k != "diff"}
+                                                       for r in results]})
         if path == "/api/sensors/delete":
             if not self._need("settings", user):
                 return
@@ -2955,7 +3171,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.36.1", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.37.0", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

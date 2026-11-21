@@ -197,6 +197,8 @@ def main(argv=None):
     parser.add_argument("--update-now", action="store_true",
                         help="download and install the newest Prahari, then exit (start it again after)")
     parser.add_argument("--selftest-update", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--config-backup", action="store_true",
+                        help="back up the switch/router configs listed in Settings now, then exit")
     parser.add_argument("--limits", action="store_true", help="print the known limits of this build and exit")
     args = parser.parse_args(argv)
     from netscan import service as service_mod
@@ -354,6 +356,13 @@ def main(argv=None):
         print(f"  summary: {summary}")
         print("  Copy each site's folder to that hotel and run setup-<site>.cmd there.")
         return 0
+
+    if args.config_backup:
+        from netscan import configbackup
+        results = configbackup.run(log=print)
+        if not results:
+            print("Configuration backup is off or has no devices (Settings -> Configuration backup).")
+        return 0 if results and all(r.get("ok") for r in results) else 1
 
     if args.backups:
         from netscan import backup as backup_mod

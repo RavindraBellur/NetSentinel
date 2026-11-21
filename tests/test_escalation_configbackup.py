@@ -1,0 +1,268 @@
+"""1.37: sensor templates, wmi/sqlite sensors, escalation, configuration backup."""
+import datetime
+import os
+import sqlite3
+import sys
+import tempfile
+import time
+import unittest
+from unittest import mock
+
+from tests import _env  # noqa: F401
+from netscan import configbackup, escalation, sensors, settings, store
+
+
+class SensorTemplates(unittest.TestCase):
+    def test_every_template_is_a_valid_sensor(self):
+        for key, tpl in sensors.TEMPLATES.items():
+            s = sensors.from_template(key)
+            self.assertIn(s["type"], sensors.KINDS, key)
+            self.assertIn(s["type"], sensors.CHECKS, key)
+            self.assertTrue(s["target"] and s["name"], key)
+            self.assertTrue(tpl["why"] and tpl["ask"], key)
+
+    def test_target_and_port_replaced(self):
+        s = sensors.from_template("pms", "10.1.1.5", port=9000)
+        self.assertEqual((s["target"], s["port"]), ("10.1.1.5", 9000))
+        self.assertIsNone(sensors.from_template("nope"))
+        self.assertEqual(len(sensors.templates()), len(sensors.TEMPLATES))
+
+    def test_view_carries_templates(self):
+        self.assertTrue(sensors.SensorRunner().view({"sensors": []})["templates"])
+
+
+class SqliteSensor(unittest.TestCase):
+    def setUp(self):
+        d = tempfile.mkdtemp()
+        self.db = os.path.join(d, "billing.db")
+        c = sqlite3.connect(self.db)
+        c.execute("CREATE TABLE invoices (id INTEGER, created TEXT)")
+        c.executemany("INSERT INTO invoices VALUES (?, datetime('now'))", [(1,), (2,), (3,)])
+        c.commit(); c.close()
+
+    def sensor(self, query, **kw):
+        return dict({"type": "sqlite", "target": self.db, "query": query,
+                     "operator": "<", "warn_value": 5, "crit_value": 1}, **kw)
+
+    def test_counts_and_thresholds(self):
+        q = "SELECT COUNT(*) FROM invoices"
+        self.assertEqual(sensors.check_sqlite(self.sensor(q))[0], sensors.WARN)       # 3 < 5
+        self.assertEqual(sensors.check_sqlite(self.sensor(q, warn_value=2))[0], sensors.UP)
+        self.assertEqual(sensors.check_sqlite(
+            self.sensor("SELECT COUNT(*) FROM invoices WHERE id > 9"))[0], sensors.DOWN)
+
+    def test_writes_refused(self):
+        for q in ("DELETE FROM invoices", "SELECT 1; DELETE FROM invoices",
+                  "UPDATE invoices SET id=0"):
+            state, _, msg = sensors.check_sqlite(self.sensor(q))
+            self.assertEqual(state, sensors.DOWN)
+            self.assertIn("SELECT", msg)
+        # read-only even if a writing statement slipped through as a CTE
+        state, _, _ = sensors.check_sqlite(self.sensor(
+            "WITH x AS (SELECT 1) INSERT INTO invoices SELECT 9, 'x' FROM x"))
+        self.assertEqual(state, sensors.DOWN)
+        c = sqlite3.connect(self.db)
+        self.assertEqual(c.execute("SELECT COUNT(*) FROM invoices").fetchone()[0], 3)
+        c.close()
+
+    def test_missing_file(self):
+        s = self.sensor("SELECT 1", target=self.db + ".missing")
+        self.assertEqual(sensors.check_sqlite(s)[0], sensors.DOWN)
+        self.assertFalse(os.path.exists(self.db + ".missing"))
+
+
+class WmiSensor(unittest.TestCase):
+    def test_script_quotes_the_target(self):
+        evil = "\\X(C:)\\Y'; Remove-Item C:\\ -Recurse; '"
+        script = sensors.wmi_script(evil)
+        self.assertIn("'\\X(C:)\\Y''; Remove-Item C:\\ -Recurse; '''", script)
+        self.assertTrue(sensors.wmi_script("SELECT * FROM Win32_Service").startswith(
+            "@(Get-CimInstance -Query 'SELECT"))
+
+    @unittest.skipIf(sys.platform == "win32", "non-Windows behaviour")
+    def test_off_windows(self):
+        self.assertEqual(sensors.check_wmi({"target": "\\Processor(_Total)\\% Processor Time"})[0],
+                         sensors.DOWN)
+
+    @unittest.skipUnless(sys.platform == "win32", "needs Windows")
+    def test_free_space_on_windows(self):
+        state, value, msg = sensors.check_wmi(sensors.from_template("disk"))
+        self.assertIn(state, (sensors.UP, sensors.WARN, sensors.DOWN))
+        self.assertTrue(0 <= value <= 100, msg)
+
+
+class Escalation(unittest.TestCase):
+    ESC = {"enabled": True, "max_pages_per_incident": 3, "quiet_hours": "",
+           "steps": escalation.clean_steps([
+               {"after_minutes": 20, "channels": "email+push", "to": "gm@hotel.in"},
+               {"after_minutes": 60, "channels": ["email"], "to": ["owner@hotel.in"]}])}
+
+    def problem(self, age_min, paged=(), severity="high"):
+        return {"key": "INC-1", "severity": severity, "opened_ts": 10000 - age_min * 60,
+                "paged": list(paged)}
+
+    def test_clean_steps(self):
+        steps = escalation.clean_steps([
+            {"after_minutes": "60", "channels": "email", "to": "a@b.in; c@d.in"},
+            {"after_minutes": 5, "channels": "push", "to": ""},
+            {"after_minutes": 10, "channels": "email", "to": ""},     # email to nobody: dropped
+            {"after_minutes": "x", "channels": "email", "to": "a@b.in"},
+            {"after_minutes": 7, "channels": "fax", "to": "a@b.in"}])
+        self.assertEqual([s["after_minutes"] for s in steps], [5, 60])
+        self.assertEqual(steps[1]["to"], ["a@b.in", "c@d.in"])
+
+    def test_steps_fire_once_in_order(self):
+        plan = escalation.plan
+        self.assertEqual(plan([self.problem(10)], self.ESC, now=10000), [])
+        out = plan([self.problem(25)], self.ESC, now=10000)
+        self.assertEqual([i for _, i, _ in out], [0])
+        self.assertEqual(plan([self.problem(25, [0])], self.ESC, now=10000), [])
+        self.assertEqual([i for _, i, _ in plan([self.problem(61, [0])], self.ESC, now=10000)], [1])
+        self.assertEqual(plan([self.problem(500, [0, 1])], self.ESC, now=10000), [])
+
+    def test_late_start_sends_only_the_top_step(self):
+        out = escalation.plan([self.problem(120)], self.ESC, now=10000)
+        self.assertEqual([i for _, i, _ in out], [1])
+        self.assertEqual(escalation.plan([self.problem(120, [1])], self.ESC, now=10000), [])
+
+    def test_cap_and_disabled(self):
+        esc = dict(self.ESC, max_pages_per_incident=1)
+        self.assertEqual(escalation.plan([self.problem(61, [0])], esc, now=10000), [])
+        self.assertEqual(escalation.plan([self.problem(61)], dict(self.ESC, enabled=False),
+                                         now=10000), [])
+
+    def test_quiet_hours(self):
+        q = escalation.in_quiet_hours
+        self.assertTrue(q("23:00-07:00", datetime.datetime(2026, 1, 1, 2, 0)))
+        self.assertTrue(q("23:00-07:00", datetime.datetime(2026, 1, 1, 23, 30)))
+        self.assertFalse(q("23:00-07:00", datetime.datetime(2026, 1, 1, 12, 0)))
+        self.assertTrue(q("13:00-14:00", datetime.datetime(2026, 1, 1, 13, 30)))
+        self.assertFalse(q("", datetime.datetime(2026, 1, 1, 13, 30)))
+        esc = dict(self.ESC, quiet_hours="00:00-23:59")
+        night = datetime.datetime(2026, 1, 1, 3, 0)
+        self.assertEqual(escalation.plan([self.problem(25, severity="medium")], esc,
+                                         now=10000, when=night), [])
+        self.assertEqual(len(escalation.plan([self.problem(25, severity="critical")], esc,
+                                             now=10000, when=night)), 1)
+
+    def test_send_email_to_step_recipients(self):
+        cfg = {"email": {"enabled": True, "host": "smtp.x", "to": []}, "telegram": {}}
+        with mock.patch("netscan.alerts.send_email", return_value=(True, "ok")) as m:
+            sent = escalation.send(cfg, {"key": "INC-9", "kind": "incident", "title": "Core switch is down",
+                                         "opened_ts": time.time() - 1500},
+                                   {"after_minutes": 20, "channels": ["email", "telegram"],
+                                    "to": ["gm@hotel.in"]})
+        self.assertTrue(sent["email"]["ok"])
+        self.assertFalse(sent["telegram"]["ok"])
+        self.assertEqual(m.call_args.kwargs["to"], ["gm@hotel.in"])
+        self.assertIn("ESCALATED", m.call_args.args[1])
+        self.assertIn("/ack INC-9", m.call_args.args[2])
+
+    def test_scanner_records_in_timeline_and_does_not_repeat(self):
+        from netscan import scanner as scanner_mod
+        sc = scanner_mod.Scanner(capture=False)
+
+        class P:
+            import threading
+            lock = threading.RLock()
+            incidents = {}
+        sc.poller = P()
+        inc = {"id": "INC-5", "state": "open", "severity": "high", "title": "AP-3 is down",
+               "opened_ts": int(time.time()) - 30 * 60, "timeline": [], "diagnosis": {}}
+        P.incidents["INC-5"] = inc
+        sid = "S-x"
+        sc.sensors.states[sid] = {"id": sid, "name": "Booking page", "state": "down",
+                                  "type": "http", "target": "https://x", "message": "HTTP 500",
+                                  "since": int(time.time()) - 25 * 60, "ts": int(time.time())}
+        settings.save({"escalation": {"enabled": True, "steps": [
+            {"after_minutes": 20, "channels": ["email"], "to": ["gm@hotel.in"]}]},
+            "email": {"enabled": True, "host": "smtp.x", "to": ["it@hotel.in"]}})
+        try:
+            with mock.patch("netscan.alerts.send_email", return_value=(True, "ok")) as m, \
+                    mock.patch("netscan.store.save_incident"):
+                first = sc.run_escalation()
+                second = sc.run_escalation()
+            self.assertEqual(len(first), 2)
+            self.assertEqual(second, [])
+            self.assertEqual(m.call_count, 2)
+            self.assertEqual(inc["timeline"][-1]["escalation_step"], 0)
+            self.assertEqual(sc.sensors.states[sid]["paged"], [0])
+            inc["state"] = "resolved"
+            self.assertEqual([p["kind"] for p in sc.open_problems()], ["sensor"])
+        finally:
+            settings.save({"escalation": {"enabled": False, "steps": []}})
+
+
+class ConfigBackup(unittest.TestCase):
+    def setUp(self):
+        configbackup.BACKUP_DIR = tempfile.mkdtemp()
+
+    def test_parse_devices(self):
+        devs, problems = configbackup.parse_devices(
+            "192.168.1.2 cisco Core switch\n10.0.0.1 mikrotik\n8.8.8.8 cisco\n"
+            "192.168.1.9 sophos\nnot-an-ip cisco")
+        self.assertEqual([(d["ip"], d["kind"], d["name"]) for d in devs],
+                         [("192.168.1.2", "cisco", "Core switch"), ("10.0.0.1", "mikrotik", "10.0.0.1")])
+        self.assertEqual(len(problems), 3)
+        self.assertTrue(any("8.8.8.8" in p for p in problems))
+
+    def test_noise_ignored_and_change_detected(self):
+        a = ("Building configuration...\nCurrent configuration : 1234 bytes\n"
+             "! Last configuration change at 10:00:01 IST Mon Nov 16 2026\n"
+             "hostname core\ninterface Gi1/0/1\n description Lobby AP\n")
+        b = a.replace("10:00:01", "11:22:33").replace("1234", "1240")
+        c = b.replace("Lobby AP", "Lobby AP + CCTV")
+        changed, first, _, _ = configbackup.save_and_compare("192.168.1.2", a, now=1)
+        self.assertTrue(first)
+        changed, first, diff, _ = configbackup.save_and_compare("192.168.1.2", b, now=2)
+        self.assertFalse(changed or first)
+        self.assertEqual(len(configbackup.versions("192.168.1.2")), 1)
+        changed, first, diff, _ = configbackup.save_and_compare("192.168.1.2", c, now=3)
+        self.assertTrue(changed)
+        self.assertIn("- description Lobby AP", diff)
+        self.assertIn("+ description Lobby AP + CCTV", diff)
+        self.assertIn("CCTV", configbackup.diff_latest("192.168.1.2"))
+
+    def test_keep_limit(self):
+        for n in range(6):
+            configbackup.save_and_compare("10.0.0.1", f"/ip address\nadd address=10.0.0.{n}/24\n",
+                                          keep=3, now=1000 + n)
+        self.assertEqual(len(configbackup.versions("10.0.0.1")), 3)
+
+    def test_ssh_is_key_only_and_batch(self):
+        args = configbackup.ssh_command("192.168.1.2", "backup", "show running-config", "C:/k/id")
+        self.assertIn("BatchMode=yes", args)
+        self.assertIn("PasswordAuthentication=no", args)
+        self.assertEqual(args[-2:], ["backup@192.168.1.2", "show running-config"])
+
+    def test_run_uses_fixed_commands_and_raises_event(self):
+        cfg = {"config_backup": {"enabled": True, "user": "backup", "key": "",
+                                 "devices": [{"ip": "192.168.1.2", "kind": "cisco", "name": "Core"}]}}
+        outputs = iter(["hostname core\ninterface Gi1\n shutdown\n",
+                        "hostname core\ninterface Gi1\n no shutdown\n"])
+        calls = []
+
+        def fake(host, user, command, key, timeout=25):
+            calls.append(command)
+            return True, next(outputs)
+        with mock.patch.object(configbackup, "_ssh", side_effect=fake), \
+                mock.patch.object(store, "add_event") as ev:
+            r1 = configbackup.run(cfg)
+            r2 = configbackup.run(cfg)
+        self.assertEqual(calls, ["show running-config"] * 2)
+        self.assertTrue(r1[0]["first_run"] and not r1[0]["changed"])
+        self.assertTrue(r2[0]["changed"])
+        self.assertTrue(ev.called)
+        self.assertEqual(configbackup.run({"config_backup": {"enabled": False}}), [])
+
+    def test_notify_change_emails_the_diff(self):
+        cfg = {"email": {"enabled": True, "host": "smtp.x", "to": ["it@hotel.in"]}, "push": {}}
+        with mock.patch("netscan.alerts.send_email", return_value=(True, "ok")) as m:
+            configbackup.notify_change(cfg, {"name": "Core", "host": "192.168.1.2",
+                                             "kind": "cisco", "diff": "+ no shutdown"})
+        self.assertIn("Configuration changed", m.call_args.args[1])
+        self.assertIn("+ no shutdown", m.call_args.args[2])
+
+
+if __name__ == "__main__":
+    unittest.main()

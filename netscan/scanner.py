@@ -71,6 +71,9 @@ class Scanner:
         self.topology = {"nodes": [], "links": [], "stats": {}, "ts": 0}
         self.defaults_state = {"state": "idle", "checked": 0, "findings": [], "ts": 0}
         self.sensors = sensors_mod.SensorRunner(log=self.log)
+        self.escalations = []
+        self.config_backups = []
+        self._config_backup_thread = None
         self._scan_thread = None
         self._snmp_poller = None
         self._capture = None
@@ -370,6 +373,93 @@ class Scanner:
                     pass
         return changed
 
+    # ---- escalation -------------------------------------------------------
+
+    def open_problems(self):
+        """Incidents and down sensors, in the shape escalation.plan() wants."""
+        problems = []
+        if self.poller:
+            with self.poller.lock:
+                for inc in self.poller.incidents.values():
+                    if inc.get("state") == "resolved":
+                        continue
+                    problems.append({
+                        "kind": "incident", "key": inc.get("id"), "ref": inc,
+                        "title": inc.get("title"), "severity": inc.get("severity"),
+                        "opened_ts": inc.get("opened_ts"),
+                        "what": f"{inc.get('device_name') or ''} {inc.get('device_ip') or ''}".strip(),
+                        "cause": (inc.get("diagnosis") or {}).get("root_cause"),
+                        "paged": [t.get("escalation_step") for t in (inc.get("timeline") or [])
+                                  if t.get("escalation_step") is not None]})
+        for sid, entry in list(self.sensors.states.items()):
+            if entry.get("state") != sensors_mod.DOWN or entry.get("maintenance"):
+                continue
+            problems.append({
+                "kind": "sensor", "key": f"SEN-{sid}", "ref": entry,
+                "title": f"{entry.get('name')} is down", "severity": "high",
+                "opened_ts": entry.get("since") or entry.get("ts"),
+                "what": f"sensor {entry.get('type')} {entry.get('target')}",
+                "cause": entry.get("message"), "paged": entry.get("paged") or []})
+        return problems
+
+    def run_escalation(self, now=None):
+        """One escalation pass; called by the poller about once a minute."""
+        from . import escalation as escalation_mod
+        if self.standby:
+            return []
+        cfg = settings.load()
+        esc = escalation_mod.config(cfg)
+        if not esc.get("enabled") or not esc.get("steps"):
+            return []
+        done = []
+        for problem, index, step in escalation_mod.plan(self.open_problems(), esc, now=now):
+            sent = escalation_mod.send(cfg, problem, step, self.log)
+            ok = [c for c, r in sent.items() if r.get("ok")]
+            who = ", ".join(step.get("to") or []) or "/".join(step["channels"])
+            note = (f"Escalated after {step['after_minutes']} min to {who} "
+                    f"({', '.join(ok) or 'nothing delivered'})")
+            ref = problem["ref"]
+            if problem["kind"] == "incident" and self.poller:
+                with self.poller.lock:
+                    ref.setdefault("timeline", []).append(
+                        {"ts": int(time.time()), "escalation_step": index, "text": note})
+                    store.save_incident(ref)
+            else:
+                ref["paged"] = list(ref.get("paged") or []) + [index]
+            store.add_event("escalation", "high", f"{problem['title']}: {note}")
+            item = {"ts": int(time.time()), "key": problem["key"], "title": problem["title"],
+                    "step": index, "after_minutes": step["after_minutes"], "to": who,
+                    "delivered": ok}
+            self.escalations = (self.escalations + [item])[-20:]
+            done.append(item)
+        return done
+
+    # ---- configuration backup ---------------------------------------------
+
+    def run_config_backup(self, wait=False):
+        """Pull switch/router/firewall configs in a thread (SSH can be slow)."""
+        from . import configbackup
+        if self._config_backup_thread is not None and self._config_backup_thread.is_alive():
+            return None
+        result = {}
+
+        def work():
+            try:
+                result["r"] = configbackup.run(settings.load(), log=self.log)
+                self.config_backups = result["r"]
+                for row in result["r"]:
+                    if row.get("changed"):
+                        configbackup.notify_change(settings.load(), row, self.log)
+            except Exception as exc:
+                self.log(f"config backup failed: {exc}")
+        self._config_backup_thread = threading.Thread(target=work, daemon=True,
+                                                      name="config-backup")
+        self._config_backup_thread.start()
+        if wait:
+            self._config_backup_thread.join()
+            return result.get("r", [])
+        return None
+
     def refresh_wifi(self):
         """Called by the poller every few minutes: read the APs' dot11 counters."""
         try:
@@ -401,6 +491,12 @@ class Scanner:
         except Exception as exc:
             out["exposure"] = {"findings": [], "counts": {}, "total": 0, "error": str(exc)[:120]}
         out["defaults"] = self.defaults_state
+        try:
+            from . import configbackup, escalation as escalation_mod
+            out["escalation"] = escalation_mod.status(recent=self.escalations)
+            out["config_backup"] = configbackup.status(self.config_backups)
+        except Exception as exc:
+            out["escalation"] = {"error": str(exc)[:120]}
         try:
             out["sensors"] = self.sensors.view()
         except Exception as exc:

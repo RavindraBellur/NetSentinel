@@ -164,6 +164,21 @@ class Poller(threading.Thread):
                 self.scanner.run_sensors()
             except Exception:
                 pass
+        if now - getattr(self, "_last_escalation", 0) >= 60:
+            self._last_escalation = now
+            try:
+                self.scanner.run_escalation()
+            except Exception as exc:
+                self.log(f"escalation pass failed: {exc}")
+        cb = cfg.get("config_backup") or {}
+        if cb.get("enabled"):
+            every = max(1, int(float(cb.get("every_hours") or 24))) * 3600
+            if now - getattr(self, "_last_config_backup", now - every + 600) >= every:
+                self._last_config_backup = now
+                try:
+                    self.scanner.run_config_backup()
+                except Exception:
+                    pass
         self.polls += 1
         self.last_poll_ts = now
         states = {}
