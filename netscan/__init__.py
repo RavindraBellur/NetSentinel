@@ -1,3 +1,3 @@
 """Prahari - LAN discovery, monitoring and multi-site network console."""
 
-__version__ = "1.37.2"
+__version__ = "1.38.0"

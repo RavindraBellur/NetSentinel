@@ -164,6 +164,15 @@ class Poller(threading.Thread):
                 self.scanner.run_sensors()
             except Exception:
                 pass
+        sy = cfg.get("systems") or {}
+        if sy.get("enabled", True):
+            every = max(60, int(float(sy.get("interval_seconds") or 120)))
+            if now - getattr(self, "_last_systems", 0) >= every:
+                self._last_systems = now
+                try:
+                    self.scanner.refresh_systems()
+                except Exception:
+                    pass
         if now - getattr(self, "_last_escalation", 0) >= 60:
             self._last_escalation = now
             try:

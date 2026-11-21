@@ -97,6 +97,8 @@ DEFAULTS = {
     "wifi": {"enabled": True, "client_oid": ""},
     "sla_email": {"enabled": False, "day": 1, "hour": 7, "to": [], "last_sent": ""},
     "sensors": [],
+    "systems": {"enabled": True, "cpu_warn": 90, "mem_warn": 90, "disk_warn": 90,
+                "bad_polls": 3, "interval_seconds": 120, "snmp": True},
     "escalation": {"enabled": False, "steps": [], "max_pages_per_incident": 3,
                    "quiet_hours": ""},
     "config_backup": {"enabled": False, "user": "", "key": "", "devices": [],

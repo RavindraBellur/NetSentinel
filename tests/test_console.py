@@ -152,6 +152,19 @@ class Console(unittest.TestCase):
         code, body = self.post("/api/sensors/save", {"sensor": {"type": "shell", "target": "rm -rf /"}})
         self.assertFalse(body["ok"])
 
+    def test_oversized_request_refused(self):
+        """1.38.0: a body over 2 MB is refused before it is read."""
+        sock = socket.create_connection(("127.0.0.1", self.port), timeout=10)
+        sock.sendall(b"POST /api/settings HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"
+                     b"X-NS: 1\r\nContent-Length: 8388608\r\n\r\n{")
+        reply = sock.recv(4096).decode("latin-1")
+        sock.close()
+        self.assertIn(" 413 ", reply.splitlines()[0])
+
+    def test_systems_settings_save(self):
+        code, out = self.post("/api/settings", {"systems": {"enabled": True, "cpu_warn": 95}})
+        self.assertEqual((code, out.get("ok")), (200, True))
+
     def test_pwa_files_served(self):
         self.assertIn(b"Prahari", self.get("/manifest.json"))
         self.assertIn(b"SHELL", self.get("/sw.js"))

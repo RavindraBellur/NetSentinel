@@ -72,6 +72,8 @@ class Scanner:
         self.defaults_state = {"state": "idle", "checked": 0, "findings": [], "ts": 0}
         self.sensors = sensors_mod.SensorRunner(log=self.log)
         self.escalations = []
+        self.systems = {"hosts": [], "ts": 0, "open": []}
+        self._systems_thread = None
         self.config_backups = []
         self._config_backup_thread = None
         self._scan_thread = None
@@ -391,6 +393,12 @@ class Scanner:
                         "cause": (inc.get("diagnosis") or {}).get("root_cause"),
                         "paged": [t.get("escalation_step") for t in (inc.get("timeline") or [])
                                   if t.get("escalation_step") is not None]})
+        for item in (self.systems or {}).get("open") or []:
+            problems.append({
+                "kind": "system", "key": f"SYS-{item['host']}", "ref": item,
+                "title": item["text"], "severity": "high", "opened_ts": item.get("since"),
+                "what": f"server {item['name']} ({item['host']})",
+                "cause": item["text"], "paged": item.get("paged") or []})
         for sid, entry in list(self.sensors.states.items()):
             if entry.get("state") != sensors_mod.DOWN or entry.get("maintenance"):
                 continue
@@ -433,6 +441,46 @@ class Scanner:
             self.escalations = (self.escalations + [item])[-20:]
             done.append(item)
         return done
+
+    # ---- systems (CPU / memory / disk) ------------------------------------
+
+    def refresh_systems(self, wait=False):
+        """This PC and every server answering SNMP, in a thread (SNMP walks take seconds)."""
+        from . import systems as systems_mod
+        if self._systems_thread is not None and self._systems_thread.is_alive():
+            return None
+
+        def notify(host, name, text, bad):
+            try:
+                alerts.notify_incident(settings.load(), {
+                    "id": f"SYS-{host}", "severity": "high" if bad else "info",
+                    "state": "open" if bad else "resolved",
+                    "title": text if bad else f"{name} is back under the limits",
+                    "device_name": name, "device_ip": host,
+                    "diagnosis": {"root_cause": text, "confidence": 100,
+                                  "actions": ["Open the Systems tab for the numbers",
+                                              "Free disk space / find the busy process on the host"]}},
+                    log=self.log)
+            except Exception:
+                pass
+
+        def work():
+            try:
+                with self.lock:
+                    devices = list(self.devices.values())
+                rows = systems_mod.collect(devices, log=self.log)
+                open_now = systems_mod.evaluate(rows, log=self.log, notify=notify)
+                self.systems = {"hosts": rows, "ts": int(time.time()), "open": open_now,
+                                "status": systems_mod.status(rows)}
+            except Exception as exc:
+                self.log(f"systems poll failed: {exc}")
+        if self.standby:
+            return None
+        self._systems_thread = threading.Thread(target=work, daemon=True, name="systems")
+        self._systems_thread.start()
+        if wait:
+            self._systems_thread.join()
+        return self.systems
 
     # ---- configuration backup ---------------------------------------------
 
@@ -494,6 +542,8 @@ class Scanner:
         try:
             from . import configbackup, escalation as escalation_mod
             out["escalation"] = escalation_mod.status(recent=self.escalations)
+            from . import systems as systems_mod
+            out["systems"] = dict(self.systems, status=systems_mod.status(self.systems.get("hosts")))
             out["config_backup"] = configbackup.status(self.config_backups)
         except Exception as exc:
             out["escalation"] = {"error": str(exc)[:120]}

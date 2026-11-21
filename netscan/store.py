@@ -347,9 +347,15 @@ def set_backup_codes(username, hashes):
                  (json.dumps(hashes or []), (username or "").lower())) is not False
 
 
+_DUMMY_SALT = "00" * 16
+
+
 def check_user(username, password):
     rows = _exec("SELECT * FROM users WHERE username=?", ((username or "").lower(),), fetch=True)
     if not rows:
+        # spend the same time as a real check, so the clock cannot tell a wrong user name
+        # from a wrong password
+        _hash(password or "", _DUMMY_SALT)
         return None
     row = rows[0]
     if hmac.compare_digest(_hash(password or "", row["salt"]), row["hash"]):

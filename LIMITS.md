@@ -93,6 +93,8 @@ The first month on a real network will find things. Report them; each one become
 | Secrets at rest | Encrypted (AES-GCM) with a key file readable only by the service. |
 | Tokens | Branch, API and organisation tokens are stored hashed and compared in constant time. |
 | Updates | Only signed releases install (Ed25519 signature + SHA-256); a bad update rolls back. |
+| Request size | Anything over 2 MB is refused before it is read (1.38.0). |
+| User names | A wrong user name takes as long to refuse as a wrong password (1.38.0). |
 | No shell | Nothing from a request or a setting reaches a shell. Since 1.37.2 the certificate-renewal command is split into program + arguments and refuses shell syntax (`` ; \| & < > $ ` % ^ ``). Sensors and config backup pass values only as quoted arguments. |
 
 Where it could be compromised, worst first, and how to close it:
@@ -110,7 +112,12 @@ Where it could be compromised, worst first, and how to close it:
    Reports to the Prahari portal always use HTTPS. For your own hub, use `--tls` and `https://`.
 5. **The Prahari portal account.** The organisation key and the Update button live there; protect
    the owner's email account, which is how portal sign-in is confirmed.
-6. **Third-party packages** (`cryptography`, `psutil`, the Anthropic SDK) are bundled in the exe
+6. **Server health over SNMP (Systems tab)** uses SNMP v1/v2c communities, which travel in clear
+   text on the LAN. Give servers a read-only community that is not `public`, accept only the
+   Prahari PC in the SNMP service, or use SNMPv3 (Settings -> SNMPv3). Proven: parsing with
+   recorded Windows/Linux answers and this PC's own numbers. Not yet proven against a real
+   Windows server's SNMP service.
+7. **Third-party packages** (`cryptography`, `psutil`, the Anthropic SDK) are bundled in the exe
    and listed in `sbom.json`; nothing is downloaded at run time except signed updates.
 
 ## 6. Legal and ethical bounds

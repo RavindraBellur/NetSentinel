@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.37.2
+# Prahari · प्रहरी — 1.38.0
 
 *Your network's 24x7 guard*
 
@@ -21,6 +21,16 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.38.0 — Systems tab, and two security fixes
+
+- **Systems tab:** CPU, memory, fullest disk and uptime for the Prahari PC and every server that answers standard
+  SNMP - nothing to install on the servers. Windows servers are read through HOST-RESOURCES (the Windows SNMP
+  service), Linux through UCD-SNMP (`snmpd`). Limits in Settings -> Systems (default 90%); an alert goes out after
+  3 readings in a row over a limit, and again when it is back to normal. A server that stays over a limit is also an
+  open problem for escalation.
+- **Security:** requests larger than 2 MB are refused before they are read, and a wrong user name now takes as long
+  to refuse as a wrong password, so nobody can find valid user names by timing the sign-in page.
 
 ## What's new in 1.37.2 — security fix
 

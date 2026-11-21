@@ -341,3 +341,97 @@ class RenewalCommandNoShell(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(run.call_args.args[0], ["certbot", "renew", "--quiet"])
         self.assertNotIn("shell", run.call_args.kwargs)
+
+
+class Systems(unittest.TestCase):
+    """1.38.0: server CPU / memory / disk."""
+
+    def test_this_pc_has_numbers(self):
+        from netscan import systems
+        row = systems.local()
+        self.assertEqual(row["source"], "local")
+        self.assertTrue(row.get("disks"), row)
+        self.assertTrue(0 <= row["disks"][0]["used_pct"] <= 100)
+        if sys.platform == "win32":                 # the exe bundles psutil; PowerShell is the fallback
+            self.assertTrue(0 <= row["cpu_pct"] <= 100, row)
+            self.assertTrue(0 < row["mem_used_pct"] <= 100, row)
+            self.assertGreater(row["uptime_s"], 0)
+
+    def test_host_resources_rows_windows_style(self):
+        """A Windows server over SNMP: RAM and C: from hrStorage, sizes in allocation units."""
+        from netscan import systems as sy
+        B = "1.3.6.1.2.1.25.2.3.1"
+        rows = lambda col, vals: [(f"{B}.{col}.{i}", 2, v) for i, v in vals]
+        descrs = rows(3, [(1, "C:\\\\ Label:  Serial Number 1a2b"), (2, "Physical Memory"), (3, "D:\\\\")])
+        types = rows(2, [(1, sy.HR_STORAGE_FIXED), (2, sy.HR_STORAGE_RAM), (3, sy.HR_STORAGE_FIXED)])
+        units = rows(4, [(1, 4096), (2, 65536), (3, 4096)])
+        sizes = rows(5, [(1, 26214400), (2, 262144), (3, 0)])       # C: 100 GiB, RAM 16 GiB, D: empty
+        used = rows(6, [(1, 23592960), (2, 196608), (3, 0)])
+        out = sy.hr_rows(descrs, types, units, sizes, used)
+        self.assertEqual(out["ram"], {"mem_total_mb": 16384, "mem_used_pct": 75.0})
+        self.assertEqual(len(out["disks"]), 1)
+        self.assertEqual(out["disks"][0]["used_pct"], 90.0)
+        self.assertEqual(out["disks"][0]["total_gb"], 107.4)
+
+    def test_windows_server_gets_cpu_and_memory_from_host_resources(self):
+        from netscan import systems as sy
+
+        def get(host, oids, community, timeout=1, retries=0):
+            return [(sy.OID_SYS_UPTIME, 0x43, 360000), (sy.OID_UCD_CPU_IDLE, 0x80, None)]
+
+        def walk(host, base, community, timeout=1, max_rows=40):
+            B = "1.3.6.1.2.1.25.2.3.1"
+            data = {sy.OID_HR_LOAD: [(base + ".1", 2, 40), (base + ".2", 2, 60)],
+                    sy.OID_HR_STORAGE_DESCR: [(B + ".3.1", 4, "C:\\\\"), (B + ".3.2", 4, "Physical Memory")],
+                    sy.OID_HR_STORAGE_TYPE: [(B + ".2.1", 6, sy.HR_STORAGE_FIXED), (B + ".2.2", 6, sy.HR_STORAGE_RAM)],
+                    sy.OID_HR_STORAGE_UNITS: [(B + ".4.1", 2, 4096), (B + ".4.2", 2, 65536)],
+                    sy.OID_HR_STORAGE_SIZE: [(B + ".5.1", 2, 1000), (B + ".5.2", 2, 1000)],
+                    sy.OID_HR_STORAGE_USED: [(B + ".6.1", 2, 950), (B + ".6.2", 2, 500)]}
+            return data.get(base, [])
+        with mock.patch("netscan.snmp.get", side_effect=get), mock.patch("netscan.snmp.walk", side_effect=walk):
+            row = sy.snmp_host("192.168.0.5", "public")
+        self.assertEqual(row["cpu_pct"], 50.0)
+        self.assertEqual(row["mem_used_pct"], 50.0)
+        self.assertEqual(row["uptime_s"], 3600)
+        self.assertEqual(row["disks"][0]["used_pct"], 95.0)
+        self.assertNotIn("community", row, "the community is not shown in the dashboard")
+
+    def test_only_snmp_servers_are_polled(self):
+        from netscan import systems as sy
+        devs = [{"ip": "192.168.0.5", "type": "server", "ports": [{"port": 161}]},
+                {"ip": "192.168.0.6", "type": "server", "ports": [3389]},
+                {"ip": "192.168.0.7", "type": "printer", "snmp_community": "public"},
+                {"ip": "192.168.0.8", "type": "nas", "snmp_community": "public"}]
+        with mock.patch.object(sy, "snmp_host", return_value={"host": "x"}) as m, \
+                mock.patch.object(sy, "local", return_value={"host": "me", "source": "local"}):
+            rows = sy.collect(devs)
+        self.assertEqual(sorted(c.args[0] for c in m.call_args_list), ["192.168.0.5", "192.168.0.8"])
+        self.assertEqual(len(rows), 3)
+
+    def test_alert_after_n_bad_readings_and_on_recovery(self):
+        from netscan import systems as sy
+        sy._STATE.clear()
+        settings.save({"systems": {"enabled": True, "cpu_warn": 90, "mem_warn": 90, "disk_warn": 90,
+                                   "bad_polls": 3}})
+        sent = []
+        notify = lambda host, name, text, bad: sent.append((host, bad, text))
+        hot = [{"host": "10.0.0.5", "label": "Billing", "cpu_pct": 97, "disks": [{"used_pct": 40}]}]
+        cool = [{"host": "10.0.0.5", "label": "Billing", "cpu_pct": 20, "disks": [{"used_pct": 40}]}]
+        self.assertEqual(sy.evaluate(hot, notify=notify), [])
+        self.assertEqual(sy.evaluate(cool, notify=notify), [])           # a single spike resets
+        sy.evaluate(hot, notify=notify); sy.evaluate(hot, notify=notify)
+        open_now = sy.evaluate(hot, notify=notify)
+        self.assertEqual(len(open_now), 1)
+        self.assertEqual(sent, [("10.0.0.5", True, "Billing: CPU 97%")])
+        self.assertEqual(len(sy.evaluate(hot, notify=notify)), 1)
+        self.assertEqual(len(sent), 1, "the alert goes out once")
+        self.assertEqual(sy.evaluate(cool, notify=notify), [])
+        self.assertEqual(sent[-1][1], False)
+
+
+class LoginTiming(unittest.TestCase):
+    def test_unknown_user_costs_a_hash(self):
+        from netscan import store as st
+        with mock.patch.object(st, "_hash", wraps=st._hash) as h:
+            self.assertIsNone(st.check_user("nobody-here", "x"))
+        self.assertEqual(h.call_count, 1)

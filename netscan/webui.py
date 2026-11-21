@@ -166,7 +166,7 @@ APP_JS = r"""
 var S = {data:null, tab:(location.hash||'#overview').slice(1), dev:{q:'',f:'all',mon:false},
          inc:null, draw:null, trafficTab:'now'};
 var TABS=[['overview','Overview','&#9635;'],['devices','Devices','&#9776;'],
-          ['incidents','Incidents','&#9888;'],['topology','Topology','&#9700;'],['sensors','Sensors','&#9741;'],['map','Wall map','&#9638;'],
+          ['incidents','Incidents','&#9888;'],['topology','Topology','&#9700;'],['sensors','Sensors','&#9741;'],['systems','Systems','&#9636;'],['map','Wall map','&#9638;'],
           ['exposure','Exposure','&#9937;'],
           ['traffic','Traffic','&#8599;'],
           ['reports','Reports','&#9783;'],['locations','Locations','&#8853;'],
@@ -234,7 +234,7 @@ function head(){
           (h.open_incidents?'<span class="badge sev-high">'+h.open_incidents+' open</span>':
           '<span class="badge sev-info">no incidents</span>');
   document.getElementById('h-title').textContent=({overview:'Overview',devices:'Devices',
-    incidents:'Incidents',topology:'Topology',sensors:'Sensors',map:'Wall map',exposure:'Exposure',traffic:'Traffic',reports:'Reports',
+    incidents:'Incidents',topology:'Topology',sensors:'Sensors',systems:'Systems',map:'Wall map',exposure:'Exposure',traffic:'Traffic',reports:'Reports',
     locations:'Locations',users:'Users',events:'Events',settings:'Settings'})[S.tab]||'Overview';
   document.getElementById('h-sub').textContent=(d.site?d.site+' · ':'')+
     (loc.network?loc.network:'')+(st.last_scan?' · last scan '+st.last_scan:'')+
@@ -526,6 +526,64 @@ function sensorChart(points, w, h){
   }).join('');
   return '<svg width="100%" height="'+h+'" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" '+
     'style="display:block;background:#0f151c;border-radius:6px">'+bars+'</svg>';
+}
+function sysBar(pct, warn){
+  warn=warn||90; var p=pct||0;
+  var col = p>=warn ? '#d9534f' : (p>=warn*0.8 ? '#e0a02c' : '#3ba55d');
+  return '<span style="display:inline-block;vertical-align:middle;background:#0f151c;border-radius:4px;height:8px;width:90px;overflow:hidden">'+
+    '<span style="display:block;height:8px;width:'+Math.min(100,p)+'%;background:'+col+'"></span></span>';
+}
+function sysUp(sec){
+  if(!sec) return '&mdash;';
+  var d=Math.floor(sec/86400), h=Math.floor((sec%86400)/3600);
+  return d? d+'d '+h+'h' : (h? h+'h' : Math.floor(sec/60)+'m');
+}
+function sysPct(v){ return v!=null? esc(v)+'%' : '&mdash;'; }
+function viewSystems(){
+  var sy=((S.data||{}).insights||{}).systems||{}, hosts=sy.hosts||[], st=sy.status||{}, th=st.thresholds||{}, open=sy.open||[];
+  var rows = hosts.length ? hosts.map(function(h){
+    var worst = Math.max.apply(null, (h.disks||[]).map(function(d){return d.used_pct||0;}).concat([0]));
+    var over=(h.over||[]).length;
+    return '<tr onclick="openSystem(\''+esc(h.host)+'\')" style="cursor:pointer">'+
+      '<td>'+(over?'<span class="badge sev-high">over</span>':'<span class="badge sev-info">ok</span>')+'</td>'+
+      '<td><b>'+esc(h.label||h.host)+'</b><div class="small muted mono">'+esc(h.host)+(h.source==='local'?' &middot; this PC':'')+'</div></td>'+
+      '<td class="small">'+esc(h.os||h.type||'')+'</td>'+
+      '<td>'+sysBar(h.cpu_pct, th.cpu)+'<span class="small"> '+sysPct(h.cpu_pct)+'</span></td>'+
+      '<td>'+sysBar(h.mem_used_pct, th.memory)+'<span class="small"> '+sysPct(h.mem_used_pct)+'</span></td>'+
+      '<td>'+sysBar(worst, th.disk)+'<span class="small"> '+(worst? esc(worst)+'%':'&mdash;')+'</span></td>'+
+      '<td class="small">'+sysUp(h.uptime_s)+'</td></tr>';
+  }).join('') : '<tr><td colspan="7" class="empty">Nothing yet - this PC appears within a couple of minutes.</td></tr>';
+  return '<div class="kpis">'+
+    kpi('Systems', hosts.length, 'this PC + servers over SNMP')+
+    kpi('Over a limit', open.length, open.length? esc(open[0].text) : 'none')+
+    kpi('Limits', (th.cpu||90)+'% / '+(th.memory||90)+'% / '+(th.disk||90)+'%', 'CPU / memory / disk')+
+    kpi('Updated', sy.ts? ago(sy.ts) : 'never', 'every '+(st.interval||120)+' s')+
+    '</div>'+
+    '<div class="card"><h2>Servers and systems</h2><table><thead><tr><th>State</th><th>Host</th><th>OS / role</th>'+
+    '<th>CPU</th><th>Memory</th><th>Fullest disk</th><th>Uptime</th></tr></thead>'+
+    '<tbody>'+rows+'</tbody></table>'+
+    '<div class="small muted" style="margin-top:8px">Servers appear here when they answer SNMP - nothing to install. '+
+    'Windows server: Settings &rarr; Apps &rarr; Optional features &rarr; add <b>SNMP</b>, then in the SNMP Service&#39;s '+
+    'Security tab accept this PC and set a community (add it under Settings &rarr; SNMP communities here). Linux: snmpd. '+
+    'An alert goes out after '+(st.bad_polls||3)+' readings in a row over a limit, and again when it is back to normal.</div></div>';
+}
+function openSystem(host){
+  var sy=((S.data||{}).insights||{}).systems||{}, h=(sy.hosts||[]).filter(function(x){return x.host===host;})[0];
+  if(!h) return;
+  document.getElementById('drawer-title').textContent=h.label||h.host;
+  document.getElementById('drawer-body').innerHTML=
+    kv('Host',esc(h.host))+kv('OS / role',esc(h.os||h.type||''))+
+    kv('CPU',sysPct(h.cpu_pct))+
+    kv('Memory',h.mem_used_pct!=null? esc(h.mem_used_pct)+'% of '+esc(h.mem_total_mb||'?')+' MB' : '&mdash;')+
+    kv('Uptime',sysUp(h.uptime_s))+
+    kv('Over a limit',(h.over||[]).length? esc((h.over||[]).join(', ')) : 'no')+
+    '<div style="margin:12px 0 4px" class="small muted">DISKS</div>'+
+    ((h.disks||[]).map(function(d){
+      return '<div class="kv"><span>'+esc(d.mount)+' ('+esc(d.total_gb||0)+' GB)</span>'+
+        '<span>'+sysBar(d.used_pct, 90)+' <b>'+esc(d.used_pct||0)+'%</b></span></div>'; }).join('') ||
+      '<div class="empty">no disks reported</div>')+
+    '<div class="small muted" style="margin-top:10px">Source: '+(h.source==='local'?'this PC':'SNMP')+'</div>';
+  document.getElementById('drawer').classList.add('open');
 }
 function openSensor(id){
   var sn=((S.data||{}).insights||{}).sensors||{}, row=(sn.sensors||[]).filter(function(r){return r.id===id;})[0];
@@ -820,6 +878,15 @@ function publishFleet(){
   var el=document.getElementById('pubmsg'); el.textContent='fetching and checking the signature ...';
   api('/api/fleet/publish',{method:'POST',body:JSON.stringify({folder:strVal('pubdir')})}).then(function(r){
     el.textContent=r.message||(r.ok?'published':'failed'); poll();
+  });
+}
+function saveSystems(){
+  var el=document.getElementById('symsg'); el.textContent='saving ...';
+  api('/api/settings',{method:'POST',body:JSON.stringify({systems:{enabled:chkVal('syen'),
+    cpu_warn:Math.min(100,Math.max(1,num('sycpu',90))), mem_warn:Math.min(100,Math.max(1,num('symem',90))),
+    disk_warn:Math.min(100,Math.max(1,num('sydisk',90))), bad_polls:Math.max(1,num('sybad',3)),
+    interval_seconds:Math.max(60,num('syint',120)), snmp:true}})}).then(function(r){
+      el.textContent = r.ok? 'saved' : ('not saved - '+(r.message||'?')); poll();
   });
 }
 function saveEscalation(){
@@ -1276,6 +1343,16 @@ function viewSettings(){
      'incident - one alert instead of a cascade.</div>'+
      '<button class="sm" style="margin-top:8px" onclick="saveQuiet()">Save</button> '+
      '<span id="qmsg" class="small muted"></span>'+
+   '</div>'+
+   '<div class="card"><h2>Systems - server CPU, memory and disk</h2>'+
+     chk('Watch this PC and servers that answer SNMP','syen',(s.systems||{}).enabled!==false)+
+     '<div class="grid3">'+fld('CPU limit %','sycpu',(s.systems||{}).cpu_warn||90,'number')+
+       fld('Memory limit %','symem',(s.systems||{}).mem_warn||90,'number')+
+       fld('Disk limit %','sydisk',(s.systems||{}).disk_warn||90,'number')+'</div>'+
+     '<div class="grid2">'+fld('Readings in a row before an alert','sybad',(s.systems||{}).bad_polls||3,'number')+
+       fld('Check every (seconds)','syint',(s.systems||{}).interval_seconds||120,'number')+'</div>'+
+     '<button class="sm" style="margin-top:8px" onclick="saveSystems()">Save</button> '+
+     '<span id="symsg" class="small muted"></span>'+
    '</div>'+
    '<div class="card"><h2>Escalation - when nobody reacts</h2>'+
      chk('Escalate problems nobody acknowledges','escen',(s.escalation||{}).enabled)+
@@ -1876,7 +1953,7 @@ function render(){
   S.dirty=false;
   nav(); head();
   var v={overview:viewOverview,devices:viewDevices,incidents:viewIncidents,
-         topology:viewTopology,sensors:viewSensors,map:viewMap,exposure:viewExposure,traffic:viewTraffic,
+         topology:viewTopology,sensors:viewSensors,systems:viewSystems,map:viewMap,exposure:viewExposure,traffic:viewTraffic,
          reports:viewReports,locations:viewLocations,users:viewUsers,events:viewEvents,
          settings:viewSettings}[S.tab]||viewOverview;
   try{ document.getElementById('view').innerHTML=v(); }
@@ -2067,7 +2144,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.37.2"))
+            .replace("__VERSION__", "1.38.0"))
 
 
 def app_page(version):
@@ -2100,6 +2177,9 @@ def app_page(version):
   <div class="bd" id="drawer-body"></div>
 </div>
 <script>{APP_JS}</script></body></html>"""
+
+
+MAX_BODY = 2 * 1024 * 1024      # 2 MB: the biggest real request (a branch report) is ~0.5 MB
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2498,7 +2578,14 @@ class Handler(BaseHTTPRequestHandler):
         if not self._gate():
             return
         path = urlparse(self.path).path
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if length < 0 or length > MAX_BODY:
+            self.close_connection = True
+            return self._json({"ok": False, "message": f"request too large (limit "
+                                                       f"{MAX_BODY // 1048576} MB)"}, 413)
         raw = self.rfile.read(length) if length else b""
         try:
             payload = json.loads(raw.decode("utf-8") or "{}")
@@ -3178,7 +3265,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.37.2", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.38.0", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""
