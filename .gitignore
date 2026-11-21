@@ -6,3 +6,5 @@ build/
 .venv/
 build_pyz/
 dist/Prahari.app/
+dist/Prahari-*-all-in-one.pyz
+dist/Prahari-*-complete.zip
