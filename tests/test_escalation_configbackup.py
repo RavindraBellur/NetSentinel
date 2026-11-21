@@ -313,3 +313,31 @@ class CongestionRule(unittest.TestCase):
         p = {"ip": "10.0.0.20", "type": "printer", "label": "P1"}
         sibs = [self.sib(f"10.0.0.{n}", "printer", "degraded") for n in range(20, 26)]
         self.assertNotEqual(self.run_rule(p, sibs)["category"], "congestion")
+
+
+class RenewalCommandNoShell(unittest.TestCase):
+    """1.37.2: the certificate-renewal command never goes through a shell."""
+
+    def test_shell_syntax_refused(self):
+        from netscan import certs
+        for cmd in ("certbot renew; del C:\\x", "a && b", "a | b", "x > y", "echo $HOME",
+                    "echo `id`", "echo %USERNAME%", "a ^& b", "a\nb"):
+            args, problem = certs.renewal_args(cmd)
+            self.assertIsNone(args, cmd)
+            self.assertIn("shell syntax", problem)
+            ok, msg = certs.run_renewal(cmd)
+            self.assertFalse(ok)
+
+    def test_plain_command_split_into_arguments(self):
+        from netscan import certs
+        self.assertEqual(certs.renewal_args("certbot renew --quiet")[0], ["certbot", "renew", "--quiet"])
+        self.assertEqual(certs.renewal_args("")[0], None)
+
+    def test_runs_without_shell(self):
+        from netscan import certs
+        with mock.patch("subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0, stdout="renewed", stderr="")
+            ok, out = certs.run_renewal("certbot renew --quiet")
+        self.assertTrue(ok)
+        self.assertEqual(run.call_args.args[0], ["certbot", "renew", "--quiet"])
+        self.assertNotIn("shell", run.call_args.kwargs)

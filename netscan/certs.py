@@ -87,12 +87,45 @@ def make_csr(domain, out_dir=None, key_path=None, common_name=None):
     return csr_path, key_path
 
 
-def run_renewal(command):
-    """Run the configured renewal command and return (ok, output)."""
+SHELL_META = set(";|&<>$`%^\n\r")
+
+
+def renewal_args(command):
+    """Settings text -> (argument list, problem). No shell is ever involved.
+
+    The command is admin-controlled, but Prahari runs as SYSTEM: if it went through a shell, anyone
+    who could change a setting could chain any command onto it. So it is split into the program and
+    its arguments, and anything that looks like shell syntax is refused outright."""
+    command = (command or "").strip()
     if not command:
-        return False, "no renewal command configured"
+        return None, "no renewal command configured"
+    bad = sorted({ch for ch in command if ch in SHELL_META})
+    if bad:
+        shown = " ".join("newline" if c in "\r\n" else c for c in bad)
+        return None, (f"the renewal command may not contain shell syntax ({shown}) - give the "
+                      f"program and its arguments only, e.g. certbot renew --quiet")
+    import shlex
     try:
-        proc = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=600)
+        if os.name == "nt":
+            args = [a[1:-1] if len(a) > 1 and a[0] == a[-1] == '"' else a
+                    for a in shlex.split(command, posix=False)]
+        else:
+            args = shlex.split(command)
+    except ValueError as exc:
+        return None, f"the renewal command could not be read: {exc}"
+    if not args:
+        return None, "no renewal command configured"
+    return args, ""
+
+
+def run_renewal(command):
+    """Run the configured renewal command (never through a shell) and return (ok, output)."""
+    args, problem = renewal_args(command)
+    if problem:
+        return False, problem
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=600,
+                              stdin=subprocess.DEVNULL)
         output = ((proc.stdout or "") + (proc.stderr or "")).strip()
         return proc.returncode == 0, output[-1500:]
     except Exception as exc:

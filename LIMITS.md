@@ -82,6 +82,37 @@ The first month on a real network will find things. Report them; each one become
 - **The event log is operational, not evidence** — an administrator can edit the database.
 - **No external penetration test has been done.**
 
+### Security review (1.37.2): what holds, and where it could be compromised
+
+| What holds | How |
+|---|---|
+| Passwords | PBKDF2-SHA256 with a per-user salt; Windows sign-in stores nothing. Repeated wrong passwords lock the address out. |
+| Sessions | Random tokens, `HttpOnly; SameSite=Strict`, `Secure` with TLS; sign-out ends them. |
+| Cross-site requests | Every state-changing request needs the `X-NS` header, which another website cannot set. |
+| SQL | Every query is parameterised. |
+| Secrets at rest | Encrypted (AES-GCM) with a key file readable only by the service. |
+| Tokens | Branch, API and organisation tokens are stored hashed and compared in constant time. |
+| Updates | Only signed releases install (Ed25519 signature + SHA-256); a bad update rolls back. |
+| No shell | Nothing from a request or a setting reaches a shell. Since 1.37.2 the certificate-renewal command is split into program + arguments and refuses shell syntax (`` ; \| & < > $ ` % ^ ``). Sensors and config backup pass values only as quoted arguments. |
+
+Where it could be compromised, worst first, and how to close it:
+
+1. **The dashboard reachable from the internet** (port-forwarded, or `--lan` on a public address).
+   Passwords and lock-out slow an attacker down; they do not stop one. Keep it on the LAN and
+   reach it over the VPN; turn on `--tls` and an allow-list (Settings -> Access).
+2. **Prahari runs as SYSTEM** (the background service). Any flaw that lets someone run code in
+   Prahari gives them the whole PC. Keep the Prahari PC patched and limit who is a Prahari admin.
+3. **Who can change Settings controls what Prahari does to devices.** The factory-password check,
+   PoE remediation and config backup act on your devices; they are limited to private LAN
+   addresses, allow-lists and an audit trail, but a stolen admin login could still aim them at
+   other devices on the LAN. Leave them off until you need them; keep 2FA on for admins.
+4. **Reports to a self-hosted hub over plain HTTP** carry the branch token in a header.
+   Reports to the Prahari portal always use HTTPS. For your own hub, use `--tls` and `https://`.
+5. **The Prahari portal account.** The organisation key and the Update button live there; protect
+   the owner's email account, which is how portal sign-in is confirmed.
+6. **Third-party packages** (`cryptography`, `psutil`, the Anthropic SDK) are bundled in the exe
+   and listed in `sbom.json`; nothing is downloaded at run time except signed updates.
+
 ## 6. Legal and ethical bounds
 
 The port scan, posture checks and factory-password check are for networks you own or

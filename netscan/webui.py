@@ -2067,7 +2067,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.37.1"))
+            .replace("__VERSION__", "1.37.2"))
 
 
 def app_page(version):
@@ -2667,6 +2667,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             if not self._need("settings", user):
                 return
+            cmd = ((payload.get("certs") or {}) if isinstance(payload.get("certs"), dict)
+                   else {}).get("renew_command")
+            if cmd:
+                from .certs import renewal_args
+                _args, problem = renewal_args(cmd)
+                if problem:
+                    return self._json({"ok": False, "message": problem})
             from .safety import record_acknowledgements
             record_acknowledgements(settings.load(), payload, who, store.add_event)
             self.scanner.update_settings(payload)
@@ -3171,7 +3178,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.37.1", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.37.2", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

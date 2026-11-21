@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.37.1
+# Prahari · प्रहरी — 1.37.2
 
 *Your network's 24x7 guard*
 
@@ -21,6 +21,13 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.37.2 — security fix
+
+- The certificate-renewal command (Settings -> Certificates) no longer runs through a command shell. It is split into
+  the program and its arguments, and shell syntax (`` ; | & < > $ ` % ^ ``) is refused when you save it and when it
+  runs. Before, anyone who could change that setting could chain other commands onto it, and Prahari runs as SYSTEM.
+- LIMITS.md section 5 now has a security review: what holds, and where Prahari could be compromised, worst first.
 
 ## What's new in 1.37.1 — no more false "Network is congested"
 
