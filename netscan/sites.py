@@ -118,6 +118,7 @@ def summary(scanner):
                        "category": ((i.get("diagnosis") or {}).get("category") or "")}
                       for i in incidents],
         "install_id": install_id(),
+        "updater": _updater_state(),
         "tailnet": _tailnet_state(snap),
         "network_id": network_id(snap),
         "devices": len(snap.get("devices") or []),
@@ -172,6 +173,21 @@ def maybe_setup_tailscale(reply, scanner, log=print):
         ok, msg = tailnet.setup_for_portal(key, name, snap_local.get("network") or "", log=log)
         log(("Tailscale: " if ok else "Tailscale setup failed: ") + msg)
     threading.Thread(target=work, daemon=True, name="tailscale-setup").start()
+
+
+def _updater_state():
+    """What the self-updater is doing, so the portal can show whether an update went in."""
+    try:
+        from . import updater
+        upd = updater.CURRENT
+        if upd is None:
+            return {"status": "off"}
+        snap = upd.snapshot()
+        return {"status": snap.get("status") or "", "error": (snap.get("error") or "")[:200],
+                "latest": snap.get("latest") or "", "mode": snap.get("mode") or "",
+                "last_check": int(snap.get("last_check") or 0)}
+    except Exception as exc:
+        return {"status": "unknown", "error": str(exc)[:120]}
 
 
 def install_id():

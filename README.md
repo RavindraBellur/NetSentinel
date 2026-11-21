@@ -28,6 +28,8 @@ Windows 10/11 and Server; also runs on Linux/macOS.
   slow as well). Switched-off devices no longer count, and printers, scanners, phones and IoT devices - which answer
   slowly when they wake from power-save - never make a congestion verdict on their own. A single slow printer is
   now reported as "<printer> is degraded" (low severity).
+- Reports to the Prahari portal now include what the updater is doing (installing, restarting, or the error that
+  stopped it), so the portal can show whether an update went in.
 
 ## What's new in 1.37.0 — escalation, ready-made sensors, config backup
 

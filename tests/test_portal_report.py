@@ -90,6 +90,23 @@ class FullReport(unittest.TestCase):
         self.assertEqual(rep["install_id"], sites.summary(S())["install_id"], "the id stays the same")
         self.assertLess(len(json.dumps(rep)), 256 * 1024, "a 250-device report stays well under the portal's limit")
 
+    def test_report_says_what_the_updater_is_doing(self):
+        from netscan import updater
+
+        class U:
+            def snapshot(self):
+                return {"status": "error", "error": "signature check failed", "latest": "1.37.1",
+                        "mode": "exe", "last_check": 1795240000.5}
+        old = updater.CURRENT
+        updater.CURRENT = U()
+        try:
+            rep = sites.summary(FakeScanner())
+        finally:
+            updater.CURRENT = old
+        self.assertEqual(rep["updater"], {"status": "error", "error": "signature check failed",
+                                          "latest": "1.37.1", "mode": "exe",
+                                          "last_check": 1795240000})
+
 
 class DeviceListOnlyWhenNeeded(unittest.TestCase):
     def test_list_sent_on_change_and_every_5_minutes_only(self):
