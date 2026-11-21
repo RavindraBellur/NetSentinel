@@ -29,6 +29,31 @@ def _pct(part, whole):
     return round(100.0 * part / whole, 1)
 
 
+# devices that sleep or answer ping slowly by design; never evidence of congestion by themselves
+SLEEPY_TYPES = ("printer", "kot_printer", "scanner", "phone", "iot")
+
+
+def _sleepy(d):
+    return (d.get("type") or "") in SLEEPY_TYPES
+
+
+def _slow_awake(dev, degraded):
+    """Slow devices that are not sleepy, counting the device under diagnosis once."""
+    ip = dev.get("ip")
+    out = [s for s in degraded if not _sleepy(s) and s.get("ip") != ip]
+    if not _sleepy(dev):
+        out.append(dev)
+    return out
+
+
+def _congested(dev, degraded, gateway, internet):
+    """At least two always-on devices slow at once, or the gateway / internet slow plus one more."""
+    slow = _slow_awake(dev, degraded)
+    path_slow = gateway.get("state") == "degraded" or any(
+        t.get("state") == "degraded" for t in internet)
+    return len(slow) >= 2 or (path_slow and len(slow) >= 1)
+
+
 def diagnose(ctx):
     """ctx keys: device, state, latency, loss, siblings(list), gateway, internet(list),
     events(list), traffic(top talkers), thresholds, data_sources(dict of bool)."""
@@ -135,15 +160,23 @@ def diagnose(ctx):
         impact = "Internet-dependent work (cloud, UPI, email, CCTV remote view) fails or slows down."
 
     # -- 4. congestion -----------------------------------------------------
+    # Congestion means several things are SLOW at the same time. Devices that are switched off
+    # (down) are a different problem, and printers / phones / IoT answer slowly when they wake
+    # from power-save, so on their own they never make a congestion verdict.
     elif state == "degraded" and (
         (latency or 0) >= th.get("latency_crit_ms", 300) or (loss or 0) >= th.get("loss_crit_pct", 10)
-    ) and (len(degraded) + len(down)) >= 2:
+    ) and _congested(dev, degraded, gateway, internet):
         category = "congestion"
         severity = "medium"
         confidence = 55
         title = "Network is congested"
-        evidence.append(f"{len(degraded)} devices show latency above "
+        slow = _slow_awake(dev, degraded)
+        evidence.append(f"{len(slow)} always-on devices show latency above "
                         f"{th.get('latency_warn_ms', 150)} ms or loss above {th.get('loss_warn_pct', 3)}%")
+        if gateway.get("state") == "degraded":
+            evidence.append("The gateway itself is slow")
+        if any(t.get("state") == "degraded" for t in internet):
+            evidence.append("Internet targets are slow too")
         if traffic:
             top = traffic[0]
             evidence.append(f"Top talker right now: {top.get('name') or top.get('ip')} "

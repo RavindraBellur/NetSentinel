@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.37.0
+# Prahari · प्रहरी — 1.37.1
 
 *Your network's 24x7 guard*
 
@@ -21,6 +21,13 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.37.1 — no more false "Network is congested"
+
+- "Network is congested" now needs at least two always-on devices slow at the same time (or the gateway / internet
+  slow as well). Switched-off devices no longer count, and printers, scanners, phones and IoT devices - which answer
+  slowly when they wake from power-save - never make a congestion verdict on their own. A single slow printer is
+  now reported as "<printer> is degraded" (low severity).
 
 ## What's new in 1.37.0 — escalation, ready-made sensors, config backup
 

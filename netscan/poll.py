@@ -186,7 +186,7 @@ class Poller(threading.Thread):
         for dev in targets:
             latency, loss, alive = results.get(dev["ip"], (0.0, 100.0, False))
             state = self._state_for(alive, latency, loss, th)
-            states[dev["ip"]] = {"state": state, "latency": latency, "loss": loss,
+            states[dev["ip"]] = {"ip": dev["ip"], "state": state, "latency": latency, "loss": loss,
                                  "name": dev.get("label") or dev.get("hostname") or dev.get("type_label"),
                                  "type": dev.get("type"), "monitored": True}
             self._apply_to_device(dev["ip"], latency, loss, state, cfg)

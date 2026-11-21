@@ -266,3 +266,50 @@ class ConfigBackup(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CongestionRule(unittest.TestCase):
+    """1.37.1: switched-off devices and sleepy printers are not congestion."""
+    TH = {"latency_warn_ms": 150, "latency_crit_ms": 300, "loss_warn_pct": 3, "loss_crit_pct": 10}
+
+    def run_rule(self, dev, siblings, gateway=None, internet=None):
+        from netscan import diagnose
+        return diagnose.diagnose({"device": dev, "state": "degraded", "latency": 400, "loss": 0,
+                                  "siblings": siblings, "gateway": gateway or {"state": "up"},
+                                  "internet": internet or [{"state": "up"}], "thresholds": self.TH,
+                                  "data_sources": {}})
+
+    def sib(self, ip, typ, state):
+        return {"ip": ip, "type": typ, "state": state, "monitored": True}
+
+    def test_slow_printer_with_printers_off_is_not_congestion(self):
+        """What the Corporate Office saw on 21/11: one slow Canon, four printers switched off."""
+        canon = {"ip": "192.168.0.235", "type": "printer", "label": "CANON2C0FC1"}
+        sibs = [self.sib("192.168.0.235", "printer", "degraded")] + [
+            self.sib(f"192.168.0.{n}", "printer", "down") for n in (12, 18, 231, 246)]
+        d = self.run_rule(canon, sibs)
+        self.assertNotEqual(d["category"], "congestion")
+        self.assertEqual(d["title"], "CANON2C0FC1 is degraded")
+
+    def test_one_slow_server_with_devices_off_is_not_congestion(self):
+        srv = {"ip": "10.0.0.5", "type": "server", "label": "Billing"}
+        sibs = [self.sib("10.0.0.5", "server", "degraded"), self.sib("10.0.0.6", "server", "down"),
+                self.sib("10.0.0.7", "switch", "down")]
+        self.assertNotEqual(self.run_rule(srv, sibs)["category"], "congestion")
+
+    def test_two_always_on_devices_slow_is_congestion(self):
+        srv = {"ip": "10.0.0.5", "type": "server", "label": "Billing"}
+        sibs = [self.sib("10.0.0.5", "server", "degraded"), self.sib("10.0.0.8", "nas", "degraded")]
+        self.assertEqual(self.run_rule(srv, sibs)["category"], "congestion")
+
+    def test_slow_device_plus_slow_gateway_is_congestion(self):
+        srv = {"ip": "10.0.0.5", "type": "server", "label": "Billing"}
+        d = self.run_rule(srv, [self.sib("10.0.0.5", "server", "degraded")],
+                          gateway={"state": "degraded"})
+        self.assertEqual(d["category"], "congestion")
+        self.assertIn("The gateway itself is slow", d["evidence"])
+
+    def test_printers_alone_never_congestion(self):
+        p = {"ip": "10.0.0.20", "type": "printer", "label": "P1"}
+        sibs = [self.sib(f"10.0.0.{n}", "printer", "degraded") for n in range(20, 26)]
+        self.assertNotEqual(self.run_rule(p, sibs)["category"], "congestion")
