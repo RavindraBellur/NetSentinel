@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.38.0
+# Prahari · प्रहरी — 1.38.1
 
 *Your network's 24x7 guard*
 
@@ -21,6 +21,14 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.38.1 — Python downloads with every release
+
+- Every release now also has **`Prahari-<version>-all-in-one.pyz`** (one file that runs with any Python 3.9+ on
+  Windows, macOS or Linux: `python3 Prahari-<version>-all-in-one.pyz`; `--unpack DIR` writes the docs, screenshots
+  and scripts) and **`Prahari-<version>-complete.zip`** (the same, unpacked). Both are signed in `latest.json` with
+  the exe. The exe stays the main Windows download - it needs no Python.
+- Fixed: run from a `.pyz`, the dashboard's app icons, the phone "install as app" files and LIMITS.md did not load.
 
 ## What's new in 1.38.0 — Systems tab, and two security fixes
 

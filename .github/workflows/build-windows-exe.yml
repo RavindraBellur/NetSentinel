@@ -82,12 +82,19 @@ jobs:
           python -c "import os, zipfile; top=['netscan','netsentinel.py','requirements.txt','README.md','EULA.txt','sbom.json']; z=zipfile.ZipFile('dist/Prahari-app.zip','w',zipfile.ZIP_DEFLATED); [z.write(os.path.join(r,f), os.path.join(r,f).replace(os.sep,'/')) for t in top for r,d,fs in (os.walk(t) if os.path.isdir(t) else [('',[],[t])]) for f in fs if '__pycache__' not in r and not f.endswith('.pyc')]; z.close()"
           python -c "import zipfile; print(len(zipfile.ZipFile('dist/Prahari-app.zip').namelist()), 'files in Prahari-app.zip')"
 
+      - name: Build the all-in-one .pyz and the complete .zip (for Python users)
+        shell: cmd
+        run: |
+          python tools\make_bundle.py
+
       - uses: actions/upload-artifact@v4
         with:
           name: Prahari-windows
           path: |
             dist/Prahari.exe
             dist/Prahari-app.zip
+            dist/Prahari-*-all-in-one.pyz
+            dist/Prahari-*-complete.zip
             README.md
             EULA.txt
             LIMITS.md
@@ -99,5 +106,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" dist/Prahari.exe dist/Prahari-app.zip `
+          $extra = Get-ChildItem dist -Include "Prahari-*-all-in-one.pyz","Prahari-*-complete.zip" -Recurse | ForEach-Object { $_.FullName }
+          gh release create "${{ github.ref_name }}" dist/Prahari.exe dist/Prahari-app.zip @extra `
             --draft --title "Prahari ${{ github.ref_name }}" --generate-notes

@@ -2144,7 +2144,7 @@ def login_page(error="", sso=None, pending="", who=""):
     form = form.replace("__WINHINT__", hint)
     return (LOGIN_HTML.replace("__CSS__", CSS).replace("__LOGIN_CSS__", LOGIN_CSS)
             .replace("__ERROR__", err).replace("__SSO__", block).replace("__FORM__", form)
-            .replace("__VERSION__", "1.38.0"))
+            .replace("__VERSION__", "1.38.1"))
 
 
 def app_page(version):
@@ -2392,12 +2392,12 @@ class Handler(BaseHTTPRequestHandler):
                      "static/icon-192.png": "image/png",
                      "static/icon-512.png": "image/png"}.get(name, "application/octet-stream")
             rel = name[len("static/"):] if name.startswith("static/") else name
-            file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                     "static", rel)
             try:
-                with open(file_path, "rb") as fh:
-                    data = fh.read()
-            except OSError:
+                import pkgutil       # works from the folder, the exe and the all-in-one .pyz
+                data = pkgutil.get_data(__package__ or "netscan", "static/" + rel)
+            except (OSError, ValueError):
+                data = None
+            if data is None:
                 self._send(404, "not found", "text/plain")
                 return
             self.send_response(200)
@@ -2485,6 +2485,13 @@ class Handler(BaseHTTPRequestHandler):
                 if lp and os.path.exists(lp):
                     with open(lp, "rb") as fh:
                         return self._send(200, fh.read(), "text/plain; charset=utf-8")
+            try:                    # running from the all-in-one .pyz: the docs ride inside it
+                import zipfile
+                with zipfile.ZipFile(here) as zf:
+                    return self._send(200, zf.read("extras/Prahari/LIMITS.md"),
+                                      "text/plain; charset=utf-8")
+            except Exception:
+                pass
             return self._send(404, b"LIMITS.md is not installed", "text/plain")
         if path == "/api/history":
             if self._guard() is None:
@@ -3265,7 +3272,7 @@ def lan_urls(port, host="127.0.0.1"):
     return urls
 
 
-def serve(scanner, host="127.0.0.1", port=8777, version="1.38.0", open_browser=True,
+def serve(scanner, host="127.0.0.1", port=8777, version="1.38.1", open_browser=True,
           app_mode=True, auth_enabled=False, session_hours=12, tls=None):
     client = None
     client_error = ""

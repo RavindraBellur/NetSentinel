@@ -54,8 +54,12 @@ def main():
     if missing:
         sys.exit(f"release {tag} is missing {', '.join(missing)} - has the GitHub build finished?")
 
+    # the Python downloads (1.38.1+) are signed too when the build attached them
+    extra = {"pyz": f"Prahari-{version}-all-in-one.pyz", "complete": f"Prahari-{version}-complete.zip"}
+    signed = dict(ASSETS, **{k: f for k, f in extra.items() if f in names})
+
     with tempfile.TemporaryDirectory() as tmp:
-        for f in ASSETS.values():
+        for f in signed.values():
             gh("release", "download", tag, "-p", f, "-D", tmp, "--clobber")
         with zipfile.ZipFile(os.path.join(tmp, ASSETS["app"])) as zf:
             init = zf.read("netscan/__init__.py").decode("utf-8")
@@ -64,7 +68,7 @@ def main():
             sys.exit(f"the code in the release says {found.group(1) if found else '?'}, the tag says {version}")
 
         assets = {}
-        for key, f in ASSETS.items():
+        for key, f in signed.items():
             data = open(os.path.join(tmp, f), "rb").read()
             assets[key] = {"file": f, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
         manifest = json.dumps({"version": version, "tag": tag, "assets": assets}, sort_keys=True)
