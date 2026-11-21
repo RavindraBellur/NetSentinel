@@ -119,6 +119,7 @@ def summary(scanner):
                       for i in incidents],
         "install_id": install_id(),
         "updater": _updater_state(),
+        "systems": _systems_state(scanner),
         "tailnet": _tailnet_state(snap),
         "network_id": network_id(snap),
         "devices": len(snap.get("devices") or []),
@@ -173,6 +174,25 @@ def maybe_setup_tailscale(reply, scanner, log=print):
         ok, msg = tailnet.setup_for_portal(key, name, snap_local.get("network") or "", log=log)
         log(("Tailscale: " if ok else "Tailscale setup failed: ") + msg)
     threading.Thread(target=work, daemon=True, name="tailscale-setup").start()
+
+
+def _systems_state(scanner):
+    """CPU / memory / disks of this PC and the servers it reads over SNMP, compact, so the
+    portal can show the server details of every location."""
+    try:
+        sy = getattr(scanner, "systems", None) or {}
+        out = []
+        for h in (sy.get("hosts") or [])[:20]:
+            out.append({
+                "host": str(h.get("host") or "")[:64], "label": str(h.get("label") or "")[:64],
+                "os": str(h.get("os") or h.get("type") or "")[:48], "local": h.get("source") == "local",
+                "cpu": h.get("cpu_pct"), "mem": h.get("mem_used_pct"), "mem_mb": h.get("mem_total_mb"),
+                "up_s": h.get("uptime_s"), "over": list(h.get("over") or [])[:3],
+                "disks": [{"m": str(d.get("mount") or "")[:24], "gb": d.get("total_gb"),
+                           "pct": d.get("used_pct")} for d in (h.get("disks") or [])[:8]]})
+        return {"ts": int(sy.get("ts") or 0), "hosts": out}
+    except Exception:
+        return {"ts": 0, "hosts": []}
 
 
 def _updater_state():

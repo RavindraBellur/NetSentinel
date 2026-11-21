@@ -1,4 +1,4 @@
-# Prahari · प्रहरी — 1.38.1
+# Prahari · प्रहरी — 1.38.2
 
 *Your network's 24x7 guard*
 
@@ -21,6 +21,11 @@ Windows 10/11 and Server; also runs on Linux/macOS.
 ![Overview](screenshot.png)
 
 ---
+
+## What's new in 1.38.2 — server details on the Prahari portal
+
+- Reports to the portal now carry the Systems readings (CPU, memory, disks, uptime) of the Prahari server and of any
+  server read over SNMP, so the portal's location page (Servers tab) and Live board show them from anywhere.
 
 ## What's new in 1.38.1 — Python downloads with every release
 

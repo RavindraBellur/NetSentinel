@@ -90,6 +90,19 @@ class FullReport(unittest.TestCase):
         self.assertEqual(rep["install_id"], sites.summary(S())["install_id"], "the id stays the same")
         self.assertLess(len(json.dumps(rep)), 256 * 1024, "a 250-device report stays well under the portal's limit")
 
+    def test_report_carries_server_details(self):
+        class S(FakeScanner):
+            systems = {"ts": 1795240000, "hosts": [
+                {"host": "OFFICE-SRV", "source": "local", "os": "Windows 10", "cpu_pct": 12.5,
+                 "mem_used_pct": 61.0, "mem_total_mb": 16384, "uptime_s": 93600, "over": [],
+                 "disks": [{"mount": "C:\\", "total_gb": 476.3, "used_pct": 58.0}]}]}
+        rep = sites.summary(S())
+        h = rep["systems"]["hosts"][0]
+        self.assertEqual((h["host"], h["local"], h["cpu"], h["mem"], h["mem_mb"], h["up_s"]),
+                         ("OFFICE-SRV", True, 12.5, 61.0, 16384, 93600))
+        self.assertEqual(h["disks"], [{"m": "C:\\", "gb": 476.3, "pct": 58.0}])
+        self.assertEqual(sites.summary(FakeScanner())["systems"]["hosts"], [])
+
     def test_report_says_what_the_updater_is_doing(self):
         from netscan import updater
 
